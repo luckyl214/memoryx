@@ -1,0 +1,1 @@
+-- initial schema is stored in schema.sql

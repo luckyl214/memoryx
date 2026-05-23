@@ -1,0 +1,16 @@
+#!/bin/sh
+# pre-commit hook — 提交前自动扫描敏感信息
+# 安装: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+PYTHON=$(command -v python3)
+if [ -f ".venv/bin/python" ]; then
+    PYTHON=".venv/bin/python"
+fi
+
+$PYTHON scripts/release-check.py
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ 提交被拒绝：存在安全问题。修复后重新提交。"
+    echo "   如果确实要提交，使用: git commit --no-verify"
+    exit 1
+fi

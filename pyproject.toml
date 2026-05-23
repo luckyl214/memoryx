@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "memoryx"
+version = "1.1.0"
+description = "Cognitive Memory Operating System — Production-grade long-term memory for AI agents"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "lucky99", email = "lucky99@users.noreply.github.com"}
+]
+keywords = ["memory", "cognition", "agent", "llm", "hermes", "vector-store", "sqlite", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "aiohttp>=3.9,<4.0",
+    "pydantic>=2.5,<3.0",
+    "pydantic-settings>=2.0",
+    "structlog>=24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+lancedb = ["lancedb>=0.19.0", "numpy>=1.26.0"]
+
+[project.urls]
+Homepage = "https://github.com/lucky99/memoryx"
+Repository = "https://github.com/lucky99/memoryx.git"
+Documentation = "https://github.com/lucky99/memoryx#readme"
+Changelog = "https://github.com/lucky99/memoryx/blob/main/CHANGELOG.md"
+Issues = "https://github.com/lucky99/memoryx/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["memoryx*"]
+
+[tool.setuptools.package-data]
+memoryx = ["py.typed"]

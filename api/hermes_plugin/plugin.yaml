@@ -1,0 +1,11 @@
+name: memoryx
+version: 0.1.0
+kind: standalone
+description: Mnemosyne-X Phase 1 Hermes hook layer
+provides_hooks:
+  - on_user_message
+  - on_assistant_response
+  - on_tool_call
+  - on_tool_result
+  - on_session_end
+  - on_session_finalize

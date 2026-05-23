@@ -1,0 +1,2 @@
+-- Initial schema is defined in db/schema.sql
+-- This migration file exists for versioned rollout and bootstrap parity.
