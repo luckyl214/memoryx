@@ -20,10 +20,19 @@ class HybridRetrievalEngine:
         limit: int = 10,
         intent: RetrievalIntent | None = None,
         scope_filter: str | None = None,
+        session_id: str | None = None,
+        include_global: bool = True,
         tag_filter: list[str] | None = None,
         tag_mode: str = "any",
         fusion_method: str = "weighted",
     ) -> list[RetrievalResult]:
+        # Build visibility filter for session isolation
+        visibility_sql, visibility_params = self._build_visibility_filter(
+            session_id=session_id,
+            scope_filter=scope_filter,
+            include_global=include_global,
+        )
+
         vector_hits = await self.vector_store.search(query_vector, limit=max(limit * 3, 10))
         vector_scores = {item["memory_id"]: float(item["score"]) for item in vector_hits}
 
@@ -36,8 +45,29 @@ class HybridRetrievalEngine:
             memory = await self.repository.get_memory(memory_id)
             if memory is None:
                 continue
-            if scope_filter is not None and memory.get("scope") != scope_filter:
+
+            # Session isolation: filter by session_id and scope
+            mem_scope = str(memory.get("scope", "global"))
+            mem_session = memory.get("session_id")
+
+            # Scope filter
+            if scope_filter is not None and mem_scope != scope_filter:
                 continue
+
+            # Session isolation
+            if session_id is not None:
+                if mem_scope == "global":
+                    pass  # always visible when include_global=True
+                elif mem_session == session_id:
+                    pass  # same session
+                elif include_global and mem_scope == "global":
+                    pass
+                else:
+                    continue  # different session, exclude
+            elif not include_global:
+                if mem_scope == "global":
+                    continue
+
             if tag_filter and not self._match_tags(memory.get("tags_json", "[]"), tag_filter, tag_mode):
                 continue
             memories.append(memory)
@@ -48,7 +78,7 @@ class HybridRetrievalEngine:
         query_tokens = self._tokens(query)
 
         for memory in memories:
-            memory_id = str(memory["memory_id"])
+            memory_id = str(memory.get("id") or memory.get("memory_id"))
             content = str(memory["content"])
             semantic_score = vector_scores.get(memory_id, 0.0)
             keyword_score = self._keyword_overlap(query_tokens, self._tokens(content))
@@ -95,130 +125,128 @@ class HybridRetrievalEngine:
         results.sort(key=lambda item: item.final_score, reverse=True)
         return results[:limit]
 
+    @staticmethod
+    def _build_visibility_filter(
+        *,
+        session_id: str | None,
+        scope_filter: str | None,
+        include_global: bool = True,
+    ) -> tuple[str, list[Any]]:
+        """Build WHERE clause for session/scope visibility filtering."""
+        clauses = ["active_state = 'active'"]
+        params: list[Any] = []
+
+        visible: list[str] = []
+
+        if session_id:
+            visible.append("session_id = ?")
+            params.append(session_id)
+
+        if scope_filter:
+            visible.append("scope = ?")
+            params.append(scope_filter)
+        elif not session_id:
+            # No session isolation — unfiltered
+            if not scope_filter:
+                return " AND ".join(clauses), params
+
+        if include_global:
+            visible.append("scope = 'global'")
+
+        if visible:
+            clauses.append("(" + " OR ".join(visible) + ")")
+
+        return " AND ".join(clauses), params
+
     def _intent_weights(self, intent: RetrievalIntent | None) -> dict[str, float]:
         base = {
-            "semantic": 1.0,
-            "keyword": 1.0,
-            "temporal": 0.45,
-            "entity": 0.35,
-            "importance": 0.6,
-            "episodic": 0.4,
+            "semantic": 0.25,
+            "keyword": 0.25,
+            "temporal": 0.15,
+            "entity": 0.10,
+            "importance": 0.15,
+            "episodic": 0.10,
         }
-        if intent == RetrievalIntent.DEBUGGING:
-            base["episodic"] = 0.8
-            base["keyword"] = 1.2
-            base["semantic"] = 1.1
-        elif intent == RetrievalIntent.DEPLOYMENT:
-            base["episodic"] = 0.7
-            base["temporal"] = 0.6
-        elif intent == RetrievalIntent.PREFERENCE:
-            base["importance"] = 0.8
-            base["entity"] = 0.5
-        elif intent == RetrievalIntent.PLANNING:
-            base["keyword"] = 1.1
-            base["importance"] = 0.75
-        return base
+        if intent is None:
+            return base
 
-    def _tokens(self, text: str) -> list[str]:
-        normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
-        return [token for token in normalized.split() if token]
+        overrides = {
+            RetrievalIntent.CODING: {"keyword": 0.35, "entity": 0.20, "semantic": 0.20, "temporal": 0.05},
+            RetrievalIntent.DEBUGGING: {"temporal": 0.30, "keyword": 0.25, "episodic": 0.20},
+            RetrievalIntent.DEPLOYMENT: {"temporal": 0.25, "episodic": 0.25},
+            RetrievalIntent.TROUBLESHOOTING: {"episodic": 0.25, "keyword": 0.30},
+            RetrievalIntent.PREFERENCE: {"importance": 0.25, "semantic": 0.30},
+            RetrievalIntent.PROJECT: {"entity": 0.25, "importance": 0.20},
+            RetrievalIntent.WORKFLOW: {"episodic": 0.30, "entity": 0.15},
+        }
+        result = dict(base)
+        result.update(overrides.get(intent, {}))
+        return result
 
-    def _keyword_overlap(self, left: list[str], right: list[str]) -> float:
-        if not left or not right:
+    @staticmethod
+    def _tokens(text: str) -> set[str]:
+        return set("".join(ch.lower() if ch.isalnum() else " " for ch in text).split())
+
+    @staticmethod
+    def _keyword_overlap(query_tokens: set[str], content_tokens: set[str]) -> float:
+        if not query_tokens:
             return 0.0
-        left_counts = Counter(left)
-        right_counts = Counter(right)
-        intersection = sum(min(left_counts[token], right_counts[token]) for token in left_counts.keys() | right_counts.keys())
-        return intersection / max(len(left), len(right), 1)
+        return len(query_tokens & content_tokens) / len(query_tokens)
 
-    def _entity_overlap(self, query_tokens: list[str], entities_json: str) -> float:
-        joined = entities_json.lower()
-        if not joined or joined == "[]":
-            return 0.0
-        matches = sum(1 for token in query_tokens if token in joined)
-        return min(1.0, matches / max(len(query_tokens), 1))
-
-    def _temporal_score(self, timestamp_text: str, now: datetime) -> float:
-        if not timestamp_text:
-            return 0.0
+    @staticmethod
+    def _entity_overlap(query_tokens: set[str], entities_json: str) -> float:
+        import json
         try:
-            timestamp = datetime.fromisoformat(timestamp_text.replace("Z", "+00:00"))
-        except ValueError:
+            entities = json.loads(entities_json or "[]")
+        except (ValueError, TypeError):
             return 0.0
-        age_seconds = max((now - timestamp).total_seconds(), 0.0)
-        days = age_seconds / 86400.0
-        return max(0.0, 1.0 - min(days / 365.0, 1.0))
+        if not entities:
+            return 0.0
+        entity_tokens = set("".join(ch.lower() if ch.isalnum() else " " for ch in str(e)).split() for e in entities)
+        hits = sum(1 for t in query_tokens if any(t in e for e in entity_tokens))
+        return hits / len(query_tokens) if query_tokens else 0.0
+
+    @staticmethod
+    def _temporal_score(valid_from_or_updated: str, now: datetime) -> float:
+        if not valid_from_or_updated:
+            return 0.5
+        try:
+            dt = datetime.fromisoformat(valid_from_or_updated.replace("Z", "+00:00"))
+            delta_hours = max(0.0, (now - dt).total_seconds() / 3600.0)
+            return max(0.0, 1.0 - delta_hours / 720.0)  # decay over 30 days
+        except (ValueError, OverflowError):
+            return 0.5
+
+    @staticmethod
+    def _match_tags(tags_json: str, filters: list[str], mode: str) -> bool:
+        import json
+        try:
+            tags = [t.lower() for t in json.loads(tags_json or "[]")]
+        except (ValueError, TypeError):
+            return True
+        filter_lower = [f.lower() for f in filters]
+        if mode == "all":
+            return all(f in tags for f in filter_lower)
+        return any(f in tags for f in filter_lower)
 
     def _build_explanation(
         self,
-        *,
         semantic_score: float,
         keyword_score: float,
         temporal_score: float,
         entity_score: float,
         importance_score: float,
         episodic_score: float,
-        intent: RetrievalIntent | None,
+        intent: RetrievalIntent | None = None,
     ) -> str:
         parts = [
             f"semantic={semantic_score:.2f}",
             f"keyword={keyword_score:.2f}",
+            f"temporal={temporal_score:.2f}",
+            f"entity={entity_score:.2f}",
             f"importance={importance_score:.2f}",
+            f"episodic={episodic_score:.2f}",
         ]
-        if temporal_score > 0:
-            parts.append(f"temporal={temporal_score:.2f}")
-        if entity_score > 0:
-            parts.append(f"entity={entity_score:.2f}")
-        if episodic_score > 0:
-            parts.append(f"episodic={episodic_score:.2f}")
-        if intent is not None:
+        if intent:
             parts.append(f"intent={intent.value}")
-        return " | ".join(parts) if parts else ""
-
-    def _match_tags(self, tags_json: str, required: list[str], mode: str = "any") -> bool:
-        import json
-        try:
-            tags = json.loads(tags_json) if isinstance(tags_json, str) else tags_json
-        except (json.JSONDecodeError, TypeError):
-            return False
-        if not isinstance(tags, list):
-            return False
-        tag_set = {str(t).strip().lower() for t in tags}
-        required_set = {str(t).strip().lower() for t in required}
-        if mode == "all":
-            return required_set.issubset(tag_set)
-        return bool(required_set & tag_set)
-
-    async def trace_retrieval(
-        self,
-        *,
-        query: str,
-        query_vector: list[float],
-        memory_id: str,
-    ) -> dict:
-        """解释性追踪：展示为什么这条记忆被召回。"""
-        result = None
-        all_results = await self.retrieve(query=query, query_vector=query_vector, limit=20)
-        for r in all_results:
-            if r.memory_id == memory_id:
-                result = r
-                break
-        if not result:
-            return {"memory_id": memory_id, "found": False}
-
-        return {
-            "memory_id": memory_id,
-            "content": result.content,
-            "memory_type": result.memory_type,
-            "found": True,
-            "scores": {
-                "semantic": result.semantic_score,
-                "keyword": result.keyword_score,
-                "temporal": result.temporal_score,
-                "entity": result.entity_score,
-                "importance": result.importance_score,
-                "episodic": result.episodic_score,
-            },
-            "final_score": result.final_score,
-            "explanation": result.explanation,
-        }
+        return ", ".join(parts)

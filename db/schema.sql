@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     session_id TEXT,
+    scope TEXT NOT NULL DEFAULT 'global',
     memory_type TEXT NOT NULL,
     content TEXT NOT NULL,
     content_summary TEXT,
@@ -78,6 +79,7 @@ CREATE TABLE IF NOT EXISTS episodic_memories (
     id TEXT PRIMARY KEY,
     memory_id TEXT NOT NULL,
     session_id TEXT,
+    scope TEXT NOT NULL DEFAULT 'global',
     episode_index INTEGER NOT NULL DEFAULT 0,
     content TEXT NOT NULL,
     summary TEXT,
@@ -100,6 +102,7 @@ CREATE TABLE IF NOT EXISTS episodic_memories (
 CREATE TABLE IF NOT EXISTS reflection_summaries (
     id TEXT PRIMARY KEY,
     session_id TEXT,
+    scope TEXT NOT NULL DEFAULT 'global',
     summary TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     checksum TEXT NOT NULL,
@@ -185,6 +188,7 @@ CREATE TABLE IF NOT EXISTS memory_access_logs (
     id TEXT PRIMARY KEY,
     memory_id TEXT NOT NULL,
     session_id TEXT,
+    scope TEXT NOT NULL DEFAULT 'global',
     access_type TEXT NOT NULL,
     access_count INTEGER NOT NULL DEFAULT 1,
     reinforcement_score REAL NOT NULL DEFAULT 0.0,
@@ -199,6 +203,7 @@ CREATE TABLE IF NOT EXISTS reinforcement_events (
     id TEXT PRIMARY KEY,
     memory_id TEXT NOT NULL,
     session_id TEXT,
+    scope TEXT NOT NULL DEFAULT 'global',
     event_type TEXT NOT NULL,
     reinforcement_score REAL NOT NULL DEFAULT 0.0,
     safety_score REAL NOT NULL DEFAULT 1.0,
@@ -326,6 +331,7 @@ CREATE TABLE IF NOT EXISTS palace_tunnels (
 CREATE TABLE IF NOT EXISTS conversation_logs (
     id TEXT PRIMARY KEY,
     session_id TEXT,
+    scope TEXT NOT NULL DEFAULT 'global',
     turn_index INTEGER NOT NULL DEFAULT 0,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -356,3 +362,5 @@ ON palace_tunnels(source_room_id, active_state);
 
 CREATE INDEX IF NOT EXISTS idx_conversation_logs_session
 ON conversation_logs(session_id, turn_index);
+CREATE INDEX IF NOT EXISTS idx_memories_session_active ON memories(session_id, active_state, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_scope_active ON memories(scope, active_state, updated_at DESC);

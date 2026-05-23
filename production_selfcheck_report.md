@@ -2,9 +2,9 @@
 
 - Root: `/home/lucky/memoryx`
 - Python: `3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]`
-- Started: `2026-05-23T10:43:20.358078+00:00`
-- Finished: `2026-05-23T10:43:24.214831+00:00`
-- Duration: `3.857s`
+- Started: `2026-05-23T10:49:26.602849+00:00`
+- Finished: `2026-05-23T10:49:30.854389+00:00`
+- Duration: `4.252s`
 - Worst severity: **ERROR**
 
 ## Counts
@@ -12,9 +12,9 @@
 | Severity | Count |
 |---|---:|
 | FATAL | 0 |
-| ERROR | 3 |
+| ERROR | 2 |
 | WARN | 4 |
-| INFO | 21 |
+| INFO | 22 |
 
 ## Production readiness
 
@@ -24,7 +24,6 @@
 
 | Severity | Check | Status | Path | Message |
 |---|---|---|---|---|
-| ERROR | `retrieval_static_contract` | `fail` | `memoryx/retrieval/engine.py` | Retrieval engine lacks session_id support; session-level isolation is likely missing. |
 | ERROR | `retrieval_static_contract` | `fail` | `memoryx/retrieval/engine.py` | Retrieval engine does not appear to boost or include LESSON memories. |
 | ERROR | `source_schema_consistency` | `fail` | `` | Source contains SQL/schema references incompatible with detected schema. |
 | WARN | `async_safety` | `warn` | `` | Daemon thread detected in async path; verify no shared asyncio state. |
@@ -42,6 +41,7 @@
 | INFO | `python_version` | `pass` | `` | Python version is 3.12.3. |
 | INFO | `repository_static_contract` | `pass` | `` | store_memory appears transaction/version/audit aware. |
 | INFO | `repository_static_contract` | `pass` | `` | Repository exposes update_memory_versioned(). |
+| INFO | `retrieval_static_contract` | `pass` | `` | Retrieval engine mentions session_id. |
 | INFO | `retrieval_static_contract` | `pass` | `` | Retrieval engine mentions scope_filter and likely filtering logic. |
 | INFO | `runtime_smoke` | `pass` | `` | Runtime repository/storage smoke test passed. |
 | INFO | `schema_bootstrap` | `pass` | `` | db/schema.sql bootstraps a temporary SQLite database. |

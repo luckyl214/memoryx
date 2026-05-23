@@ -1,14 +1,14 @@
 {
   "stats": {
-    "started_at": "2026-05-23T10:43:20.358078+00:00",
-    "finished_at": "2026-05-23T10:43:24.214831+00:00",
-    "duration_seconds": 3.857,
+    "started_at": "2026-05-23T10:49:26.602849+00:00",
+    "finished_at": "2026-05-23T10:49:30.854389+00:00",
+    "duration_seconds": 4.252,
     "root": "/home/lucky/memoryx",
     "python": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
     "counts": {
-      "INFO": 21,
+      "INFO": 22,
       "WARN": 4,
-      "ERROR": 3,
+      "ERROR": 2,
       "FATAL": 0
     }
   },
@@ -240,10 +240,10 @@
     },
     {
       "check": "retrieval_static_contract",
-      "severity": "ERROR",
-      "status": "fail",
-      "message": "Retrieval engine lacks session_id support; session-level isolation is likely missing.",
-      "path": "memoryx/retrieval/engine.py",
+      "severity": "INFO",
+      "status": "pass",
+      "message": "Retrieval engine mentions session_id.",
+      "path": "",
       "detail": {}
     },
     {
@@ -322,7 +322,7 @@
   ],
   "summary": {
     "production_ready": false,
-    "blocker_count": 3,
+    "blocker_count": 2,
     "warning_count": 4,
     "top_blockers": [
       {
@@ -388,12 +388,6 @@
           ],
           "total": 9
         }
-      },
-      {
-        "check": "retrieval_static_contract",
-        "message": "Retrieval engine lacks session_id support; session-level isolation is likely missing.",
-        "path": "memoryx/retrieval/engine.py",
-        "detail": {}
       },
       {
         "check": "retrieval_static_contract",
