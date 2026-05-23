@@ -279,3 +279,35 @@ async def consolidation_run(body: ConsolidationRequest, _key: str | None = Depen
         raise HTTPException(503, "consolidation not configured")
     result = await _app_consolidation.run(limit=body.limit, dry_run=body.dry_run)
     return {"consolidation": result}
+
+
+# ══ P11 Cognitive Guard Routes ══
+try:
+    from memoryx.api.p11_routes import create_p11_router
+
+    _p11_repo = None
+
+    async def _ensure_p11_repo():
+        global _p11_repo
+        if _p11_repo is None:
+            from memoryx.storage import MemoryRepository
+            from pathlib import Path
+            _p11_repo = MemoryRepository(Path("./data/memoryx.db"))
+            await _p11_repo.open()
+        return _p11_repo
+
+    async def _ensure_p11_api():
+        repo = await _ensure_p11_repo()
+        api = await _ensure_api()
+        return repo, api
+
+    app.include_router(
+        create_p11_router(
+            repository=None,  # lazy, resolved in routes
+            retrieval_engine=None,
+            lesson_policy=None,
+        ),
+        prefix="/v1/cognitive",
+    )
+except ImportError:
+    pass
