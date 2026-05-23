@@ -4,7 +4,12 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-import structlog
+try:
+    import structlog
+    _HAS_STRUCTLOG = True
+except ImportError:
+    structlog = None  # type: ignore
+    _HAS_STRUCTLOG = False
 
 
 def configure_logging(
@@ -21,26 +26,25 @@ def configure_logging(
 
     if not any(isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", "") == str(log_path) for h in root.handlers):
         handler = RotatingFileHandler(
-            log_path,
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            encoding="utf-8",
+            log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8",
         )
-        formatter = logging.Formatter("%(message)s")
-        handler.setFormatter(formatter)
+        handler.setFormatter(logging.Formatter("%(message)s"))
         root.addHandler(handler)
 
-    structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(root.level),
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
+    if _HAS_STRUCTLOG:
+        structlog.configure(
+            processors=[
+                structlog.processors.add_log_level,
+                structlog.processors.TimeStamper(fmt="iso", utc=True),
+                structlog.processors.JSONRenderer(),
+            ],
+            wrapper_class=structlog.make_filtering_bound_logger(root.level),
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
 
 
 def get_logger(name: str):
-    return structlog.get_logger(name)
+    if _HAS_STRUCTLOG:
+        return structlog.get_logger(name)
+    return logging.getLogger(name)
