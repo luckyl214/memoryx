@@ -28,6 +28,12 @@ class MemoryQueryAPI:
         self.reflection_engine = ReflectionEngine(repository=repository)
         self.temporal_engine = TemporalMemoryEngine(repository=repository)
         self.retrieval_engine = HybridRetrievalEngine(repository=repository, vector_store=vector_store)
+        # P8: instrument retrieval engine for stage-level observability
+        try:
+            from memoryx.retrieval.observed import instrument_retrieval_engine
+            self.retrieval_engine = instrument_retrieval_engine(self.retrieval_engine)
+        except ImportError:
+            pass
         self.reflect_engine = ReflectEngine(retrieval_engine=self.retrieval_engine)
         self.conversation_log = ConversationLogStore(repository=repository)
         self.feedback_learning_engine = (

@@ -53,6 +53,13 @@ app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
+# P8: install observability middleware (trace-id, metrics, logging)
+try:
+    from memoryx.api.p8_bootstrap import install_p8_observability
+    install_p8_observability(app)
+except ImportError:
+    pass
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

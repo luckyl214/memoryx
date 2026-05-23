@@ -16,4 +16,7 @@ RUN mkdir -p /app/db /app/logs /app/cache /app/data
 
 EXPOSE 8080
 
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+    CMD curl -f http://localhost:8080/live || exit 1
+
 CMD ["uvicorn", "memoryx.api.rest_app:app", "--host", "0.0.0.0", "--port", "8080"]

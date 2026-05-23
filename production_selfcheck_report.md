@@ -2,9 +2,9 @@
 
 - Root: `/home/lucky/memoryx`
 - Python: `3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]`
-- Started: `2026-05-23T12:32:32.996526+00:00`
-- Finished: `2026-05-23T12:32:36.963801+00:00`
-- Duration: `3.967s`
+- Started: `2026-05-23T12:44:39.467626+00:00`
+- Finished: `2026-05-23T12:44:43.253874+00:00`
+- Duration: `3.786s`
 - Worst severity: **WARN**
 
 ## Counts

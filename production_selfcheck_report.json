@@ -1,8 +1,8 @@
 {
   "stats": {
-    "started_at": "2026-05-23T12:32:32.996526+00:00",
-    "finished_at": "2026-05-23T12:32:36.963801+00:00",
-    "duration_seconds": 3.967,
+    "started_at": "2026-05-23T12:44:39.467626+00:00",
+    "finished_at": "2026-05-23T12:44:43.253874+00:00",
+    "duration_seconds": 3.786,
     "root": "/home/lucky/memoryx",
     "python": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
     "counts": {
