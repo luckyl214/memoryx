@@ -35,7 +35,7 @@ class HierarchicalMemoryManager:
             memory_id = str(memory["memory_id"])
             tier = self._classify_record(memory)
             report.tier_assignments[memory_id] = tier
-            if tier == MemoryTier.ARCHIVE and int(memory.get("active_state", 1)) == 1:
+            if tier == MemoryTier.ARCHIVE and memory.get("active_state", "active") == "active":
                 await self._archive_memory(memory)
                 report.migrated_counts[tier] = report.migrated_counts.get(tier, 0) + 1
         return report
@@ -99,7 +99,7 @@ class HierarchicalMemoryManager:
         access_count = int(memory.get("access_count", 0) or 0)
         importance = float(memory.get("importance_score", 0.0) or 0.0)
         memory_type = str(memory.get("memory_type", "")).upper()
-        active_state = int(memory.get("active_state", 1) or 0)
+        active_state = str(memory.get("active_state", "active") or "active")
 
         if active_state == 0 or (decay >= 0.9 and access_count == 0):
             return MemoryTier.ARCHIVE

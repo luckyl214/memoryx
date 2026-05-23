@@ -1,0 +1,42 @@
+# MemoryX Retrieval Weights — P3
+# 热加载：修改此文件后 30 秒内检索权重自动生效（mtime 检测）
+# 权重总和不需要等于 1.0，引擎内部归一化
+
+semantic: 1.0
+keyword: 1.0
+temporal: 0.45
+entity: 0.35
+importance: 0.6
+episodic: 0.4
+
+# 意图感知权重覆盖（覆盖 base 权重中的对应项）
+intents:
+  debugging:
+    semantic: 1.1
+    keyword: 1.2
+    episodic: 0.8
+
+  deployment:
+    episodic: 0.7
+    temporal: 0.6
+
+  preference:
+    importance: 0.8
+    entity: 0.5
+
+  planning:
+    keyword: 1.1
+    importance: 0.75
+
+  coding:
+    keyword: 1.1
+    temporal: 0.3
+
+  emotional:
+    episodic: 0.6
+    importance: 0.5
+
+  troubleshooting:
+    episodic: 0.7
+    temporal: 0.5
+    keyword: 1.15

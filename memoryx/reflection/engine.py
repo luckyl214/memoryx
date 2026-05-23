@@ -31,8 +31,8 @@ class ReflectionEngine:
         summary = " | ".join(summary_parts) if summary_parts else "No long-term reflection patterns detected."
 
         await self.repository.db.execute(
-            "INSERT INTO reflection_summaries(reflection_id, summary, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);",
-            (uuid4().hex, summary),
+            "INSERT INTO reflection_summaries(id, summary, content_hash, checksum, valid_from, active_state, created_at, metadata_json) VALUES (?, ?, ?, ?, datetime('now'), 'active', datetime('now'), ?);",
+            (uuid4().hex, summary, self.repository.checksum(summary), self.repository.checksum(summary), "{}"),
         )
 
         return {
@@ -64,7 +64,7 @@ class ReflectionEngine:
         return [label for label, count in grouped.items() if count >= 2]
 
     def _project_evolution(self, memories: list[dict]) -> list[str]:
-        projects = [item for item in memories if str(item.get("memory_type", "")).upper() == "PROJECT" or str(item.get("scope", "")).lower() == "project"]
+        projects = [item for item in memories if str(item.get("memory_type", "")).upper() == "PROJECT"]
         ordered = sorted(projects, key=lambda item: str(item.get("valid_from") or item.get("updated_at") or item.get("created_at") or ""))
         return [str(item.get("content", "")).strip() for item in ordered if str(item.get("content", "")).strip()]
 
@@ -72,7 +72,7 @@ class ReflectionEngine:
         patterns: list[str] = []
         for item in memories:
             content = str(item.get("content", "")).strip()
-            tags = str(item.get("tags_json", "[]")).lower()
+            tags = str(item.get("metadata_json", "{}")).lower()
             if "workflow" in tags or any(token in content.lower() for token in ("async queue", "retry", "backoff", "graceful shutdown")):
                 patterns.append(content)
         return patterns[:5]

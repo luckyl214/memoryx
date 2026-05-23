@@ -66,8 +66,12 @@ class AsyncSQLite:
             return rowcount
 
     async def fetchone(self, sql: str, params: Iterable[Any] = ()) -> Optional[sqlite3.Row]:
-        rows = await self.fetchall(sql, params)
-        return rows[0] if rows else None
+        conn = self._require_conn()
+        async with self._lock:
+            cursor = await asyncio.to_thread(conn.execute, sql, tuple(params))
+            row = await asyncio.to_thread(cursor.fetchone)
+            await asyncio.to_thread(cursor.close)
+            return row
 
     async def fetchall(self, sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
         conn = self._require_conn()

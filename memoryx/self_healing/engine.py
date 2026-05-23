@@ -55,7 +55,7 @@ class SelfHealingEngine:
             expected = self.repository.checksum(str(row["content"]))
             memory_id = str(row["memory_id"])
             await self.repository.db.execute(
-                "UPDATE memories SET checksum = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+                "UPDATE memories SET checksum = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
                 (expected, memory_id),
             )
             await self.repository.append_audit(

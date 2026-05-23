@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, is_dataclass
-from typing import cast
-from typing import Any
+from typing import cast, Any
 
 from memoryx.context import ContextBundle
 
@@ -16,32 +15,26 @@ class MemoryObservabilityEngine:
         if self.repository is None:
             return []
         rows = await self.repository.db.fetchall(
-            "SELECT * FROM memory_access_logs WHERE memory_id = ? ORDER BY accessed_at DESC LIMIT ?;",
+            "SELECT * FROM memory_access_logs WHERE memory_id = ? ORDER BY created_at DESC LIMIT ?;",
             (memory_id, limit),
         )
         return [dict(row) for row in rows]
 
     async def audit_logs(self, *, subject_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        """subject_id maps to entity_id in P0 audit_logs schema."""
         if self.repository is None:
             return []
         rows = await self.repository.db.fetchall(
-            "SELECT * FROM audit_logs WHERE subject_id = ? ORDER BY created_at ASC LIMIT ?;",
+            "SELECT * FROM audit_logs WHERE entity_id = ? ORDER BY created_at ASC LIMIT ?;",
             (subject_id, limit),
         )
-        items: list[dict[str, Any]] = []
-        for row in rows:
-            item = dict(row)
-            payload = item.get("payload_json")
-            if isinstance(payload, str):
-                item["payload"] = json.loads(payload)
-            items.append(item)
-        return items
+        return [dict(row) for row in rows]
 
     async def memory_lineage(self, *, memory_id: str) -> dict[str, Any]:
         if self.repository is None:
             return {"memory_id": memory_id, "versions": [], "audits": []}
         version_rows = await self.repository.db.fetchall(
-            "SELECT * FROM memory_versions WHERE memory_id = ? ORDER BY version_number ASC;",
+            "SELECT * FROM memory_versions WHERE memory_id = ? ORDER BY version ASC;",
             (memory_id,),
         )
         audits = await self.audit_logs(subject_id=memory_id, limit=200)

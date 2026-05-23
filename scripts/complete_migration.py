@@ -44,7 +44,7 @@ def migrate_persona_and_entities() -> dict:
         with open(persona_file, "r", encoding="utf-8") as f:
             content = f.read()
         
-        memory_id = "persona-ro-zhongjie"
+        memory_id = "example_user"
         
         # 检查是否已存在
         existing = conn.execute(
@@ -165,7 +165,7 @@ def migrate_persona_and_entities() -> dict:
         """, (
             uuid4_hex(),
             "complete_migration",
-            "persona-ro-zhongjie",
+            "example_user",
             json.dumps({"entities": result["entities"], "relations": result["relations"]}, ensure_ascii=False),
             datetime.now(timezone.utc).isoformat(),
         ))

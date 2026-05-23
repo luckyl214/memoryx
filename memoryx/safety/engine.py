@@ -80,7 +80,7 @@ class MemorySafetyEngine:
                 superseded_by=memory.get("superseded_by"),
                 valid_from=memory.get("valid_from"),
                 valid_to=memory.get("valid_to"),
-                active_state=int(memory.get("active_state", 1)),
+                active_state=str(memory.get("active_state", "active")),
                 reinforcement_score=float(memory.get("reinforcement_score", 0.0)),
                 safety_score=0.0,
                 scope=str(memory.get("scope", "global")),

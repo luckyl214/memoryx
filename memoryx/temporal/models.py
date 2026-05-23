@@ -10,5 +10,5 @@ class TemporalState:
     version_number: int
     valid_from: str | None = None
     valid_to: str | None = None
-    active_state: int = 1
+    active_state: str = "active"
     superseded_by: str | None = None

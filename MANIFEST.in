@@ -11,3 +11,4 @@ include pytest.ini
 include .env.example
 recursive-include db *.sql
 recursive-include tests *.py
+recursive-include memoryx/storage/sql *.sql

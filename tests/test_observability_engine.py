@@ -13,7 +13,7 @@ from memoryx.storage import MemoryRecord, MemoryRepository
 async def test_observability_reads_access_logs(tmp_path: Path) -> None:
     repo = MemoryRepository(tmp_path / "observability-access.db")
     await repo.open()
-    await repo.store_memory(MemoryRecord(memory_id="m1", memory_type="FACT", content="User prefers async Python"))
+    await repo.store_memory(MemoryRecord(id="m1", memory_type="FACT", content="User prefers async Python"))
     await repo.record_access("m1")
 
     engine = MemoryObservabilityEngine(repository=repo)
@@ -29,8 +29,8 @@ async def test_observability_reads_access_logs(tmp_path: Path) -> None:
 async def test_observability_reads_audit_logs_and_lineage(tmp_path: Path) -> None:
     repo = MemoryRepository(tmp_path / "observability-audit.db")
     await repo.open()
-    await repo.store_memory(MemoryRecord(memory_id="m2", memory_type="PROJECT", content="Initial project state"))
-    await repo.store_memory(MemoryRecord(memory_id="m2", memory_type="PROJECT", content="Updated project state"))
+    await repo.store_memory(MemoryRecord(id="m2", memory_type="PROJECT", content="Initial project state"))
+    await repo.store_memory(MemoryRecord(id="m2", memory_type="PROJECT", content="Updated project state"))
     await repo.append_audit("custom_action", "m2", {"detail": "ok"})
 
     engine = MemoryObservabilityEngine(repository=repo)
@@ -38,7 +38,8 @@ async def test_observability_reads_audit_logs_and_lineage(tmp_path: Path) -> Non
     lineage = await engine.memory_lineage(memory_id="m2")
 
     assert len(audits) >= 3
-    assert audits[-1]["subject_id"] == "m2"
+    # P0 schema: audit_logs.entity_id, not subject_id
+    assert audits[-1]["entity_id"] == "m2"
     assert len(lineage["versions"]) >= 2
     assert len(lineage["audits"]) >= 3
     await repo.close()

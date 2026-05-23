@@ -25,7 +25,7 @@ class ConsolidationEngine:
             if access_count <= 1 and importance < 0.6:
                 new_decay = min(1.0, current_decay + 0.15)
                 await self.repository.db.execute(
-                    "UPDATE memories SET decay_score = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+                    "UPDATE memories SET decay_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
                     (new_decay, memory["memory_id"]),
                 )
                 updated += 1
@@ -37,7 +37,7 @@ class ConsolidationEngine:
         for memory in memories:
             decay = float(memory.get("decay_score", 0.0))
             access_count = int(memory.get("access_count", 0))
-            if decay >= 0.9 and access_count == 0 and int(memory.get("active_state", 1)) == 1:
+            if decay >= 0.9 and access_count == 0 and memory.get("active_state", "active") == "active":
                 await self.repository.db.execute(
                     "INSERT INTO archived_memories(archive_id, memory_id, content, archived_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP);",
                     (f"archive-{memory['memory_id']}", memory["memory_id"], memory["content"]),
@@ -56,7 +56,7 @@ class ConsolidationEngine:
             if importance >= 0.85 or access_count >= 3:
                 new_score = min(1.0, current_score + 0.15)
                 await self.repository.db.execute(
-                    "UPDATE memories SET reinforcement_score = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+                    "UPDATE memories SET reinforcement_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
                     (new_score, memory["memory_id"]),
                 )
                 await self.repository.db.execute(

@@ -10,7 +10,7 @@ class EntityGraphEngine:
 
     async def ensure_entity(self, entity_name: str, entity_type: str = "unknown") -> str:
         row = await self.repository.db.fetchone(
-            "SELECT entity_id FROM entities WHERE lower(entity_name) = lower(?) AND entity_type = ? LIMIT 1;",
+            "SELECT id AS entity_id FROM entities WHERE lower(name) = lower(?) AND entity_type = ? LIMIT 1;",
             (entity_name, entity_type),
         )
         if row:
@@ -37,7 +37,7 @@ class EntityGraphEngine:
 
     async def neighbors(self, entity_name: str) -> list[dict]:
         row = await self.repository.db.fetchone(
-            "SELECT entity_id FROM entities WHERE lower(entity_name) = lower(?) LIMIT 1;",
+            "SELECT id AS entity_id FROM entities WHERE lower(name) = lower(?) LIMIT 1;",
             (entity_name,),
         )
         if not row:
@@ -45,11 +45,11 @@ class EntityGraphEngine:
         entity_id = str(row["entity_id"])
         rows = await self.repository.db.fetchall(
             """
-            SELECT e.entity_id, e.entity_name, e.entity_type, r.relation_type, r.weight
+            SELECT e.id AS entity_id, e.name AS entity_name, e.entity_type, r.relation_type, r.confidence_score AS weight
             FROM relations r
-            JOIN entities e ON e.entity_id = r.target_entity_id
+            JOIN entities e ON e.id = r.target_entity_id
             WHERE r.source_entity_id = ?
-            ORDER BY r.weight DESC, e.entity_name ASC;
+            ORDER BY r.confidence_score DESC, e.name ASC;
             """,
             (entity_id,),
         )
@@ -57,7 +57,7 @@ class EntityGraphEngine:
 
     async def traverse(self, entity_name: str, depth: int = 2) -> list[dict]:
         start = await self.repository.db.fetchone(
-            "SELECT entity_id, entity_name, entity_type FROM entities WHERE lower(entity_name) = lower(?) LIMIT 1;",
+            "SELECT id AS entity_id, name AS entity_name, entity_type FROM entities WHERE lower(name) = lower(?) LIMIT 1;",
             (entity_name,),
         )
         if not start:
@@ -73,13 +73,13 @@ class EntityGraphEngine:
                 continue
             visited.add(current_id)
             entity = await self.repository.db.fetchone(
-                "SELECT entity_id, entity_name, entity_type FROM entities WHERE entity_id = ?;",
+                "SELECT id AS entity_id, name AS entity_name, entity_type FROM entities WHERE id = ?;",
                 (current_id,),
             )
             if entity:
                 results.append(dict(entity))
             edges = await self.repository.db.fetchall(
-                "SELECT target_entity_id FROM relations WHERE source_entity_id = ? ORDER BY weight DESC;",
+                "SELECT target_entity_id FROM relations WHERE source_entity_id = ? ORDER BY confidence_score DESC;",
                 (current_id,),
             )
             for edge in edges:
@@ -88,13 +88,13 @@ class EntityGraphEngine:
 
     async def project_graph(self) -> list[dict]:
         rows = await self.repository.db.fetchall(
-            "SELECT entity_id, entity_name, entity_type FROM entities WHERE entity_type IN ('project', 'technology') ORDER BY entity_name ASC;"
+            "SELECT id AS entity_id, name AS entity_name, entity_type FROM entities WHERE entity_type IN ('project', 'technology') ORDER BY name ASC;"
         )
         return [dict(item) for item in rows]
 
     async def disambiguate(self, name: str, context: str = "") -> list[dict]:
         """实体消歧 — 查找同名实体的不同上下文。"""
-        query = "SELECT entity_id, entity_name, entity_type, metadata_json FROM entities WHERE lower(entity_name) = lower(?);"
+        query = "SELECT id AS entity_id, name AS entity_name, entity_type, metadata_json FROM entities WHERE lower(name) = lower(?);"
         rows = await self.repository.db.fetchall(query, (name,))
         results = [dict(r) for r in rows]
         if context and len(results) > 1:

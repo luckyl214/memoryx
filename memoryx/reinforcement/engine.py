@@ -60,7 +60,7 @@ class ImportanceReinforcementEngine:
             if delta > 0:
                 new_score = min(1.0, current_score + delta)
                 await self.repository.db.execute(
-                    "UPDATE memories SET reinforcement_score = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+                    "UPDATE memories SET reinforcement_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
                     (new_score, memory_id),
                 )
                 await self.repository.db.execute(
@@ -74,7 +74,7 @@ class ImportanceReinforcementEngine:
                 current_decay = float(memory.get("decay_score", 0.0))
                 new_decay = min(1.0, current_decay + decay_delta)
                 await self.repository.db.execute(
-                    "UPDATE memories SET decay_score = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+                    "UPDATE memories SET decay_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
                     (new_decay, memory_id),
                 )
                 if delta == 0:

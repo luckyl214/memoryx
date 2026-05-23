@@ -13,9 +13,10 @@ from .api import MemoryQueryAPI
 
 class MCPServer:
     """轻量 MCP 服务器，暴露 memoryx 工具。"""
-
-    def __init__(self, api: MemoryQueryAPI) -> None:
+    def __init__(self, api, embedding_manager=None, *, allow_embedding_fallback: bool = False) -> None:
         self.api = api
+        self.embedding_manager = embedding_manager
+        self.allow_embedding_fallback = allow_embedding_fallback
         self._tools: dict[str, dict] = {}
 
     def list_tools(self) -> list[dict]:

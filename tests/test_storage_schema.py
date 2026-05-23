@@ -14,10 +14,9 @@ async def test_schema_and_fts_roundtrip(tmp_path: Path) -> None:
     await repo.open()
 
     record = MemoryRecord(
-        memory_id="m1",
+        id="m1",
         memory_type="FACT",
         content="Example user likes async Python",
-        scope="user",
     )
     await repo.store_memory(record)
 
@@ -27,17 +26,17 @@ async def test_schema_and_fts_roundtrip(tmp_path: Path) -> None:
     assert fetched["memory_type"] == "FACT"
 
     results = await repo.search_full_text("async")
-    assert results and results[0]["memory_id"] == "m1"
+    assert results and results[0]["id"] == "m1"
 
     active = await repo.list_active_memories()
-    assert active[0]["memory_id"] == "m1"
+    assert active[0]["id"] == "m1"
 
     await repo.record_access("m1")
     updated = await repo.get_memory("m1")
     assert updated is not None and updated["access_count"] == 1
 
     await repo.add_session_summary("s1", "summary text")
-    await repo.add_episodic_memory("s1", "debugging episode", "fixed queue bug")
+    await repo.add_episodic_memory(memory_id="m1", session_id="s1", content="fixed queue bug", summary="debugging episode")
     await repo.add_entity("Hermes")
     await repo.quarantine_memory("m1", "suspicious")
     await repo.rollback_memory("m1")
@@ -53,13 +52,13 @@ async def test_schema_and_fts_roundtrip(tmp_path: Path) -> None:
 async def test_conflict_and_supersede_flow(tmp_path: Path) -> None:
     repo = MemoryRepository(tmp_path / "memoryx2.db")
     await repo.open()
-    await repo.store_memory(MemoryRecord(memory_id="a", memory_type="PREFERENCE", content="喜欢轻量级"))
-    await repo.store_memory(MemoryRecord(memory_id="b", memory_type="PREFERENCE", content="喜欢重量级"))
+    await repo.store_memory(MemoryRecord(id="a", memory_type="PREFERENCE", content="喜欢轻量级"))
+    await repo.store_memory(MemoryRecord(id="b", memory_type="PREFERENCE", content="喜欢重量级"))
     await repo.add_conflict("a", "b", "opposite preference")
     await repo.supersede_memory("a", "b")
 
     a = await repo.get_memory("a")
-    assert a is not None and a["active_state"] == 0 and a["superseded_by"] == "b"
+    assert a is not None and a["active_state"] == "superseded" and a["superseded_by"] == "b"
 
     await repo.close()
 
@@ -71,7 +70,7 @@ async def test_batch_write_smoke(tmp_path: Path) -> None:
 
     started = time.perf_counter()
     for i in range(5):
-        await repo.store_memory(MemoryRecord(memory_id=f"m{i}", memory_type="OBSERVATION", content=f"item {i}"))
+        await repo.store_memory(MemoryRecord(id=f"m{i}", memory_type="OBSERVATION", content=f"item {i}"))
     elapsed = time.perf_counter() - started
 
     rows = await repo.list_active_memories(limit=10)

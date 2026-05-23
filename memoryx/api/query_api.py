@@ -95,7 +95,7 @@ class MemoryQueryAPI:
         if tag_clean not in tags:
             tags.append(tag_clean)
             await self.repository.db.execute(
-                "UPDATE memories SET tags_json = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+                "UPDATE memories SET tags_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
                 (json.dumps(tags, ensure_ascii=False), memory_id),
             )
 
@@ -109,7 +109,7 @@ class MemoryQueryAPI:
         if tag_clean in tags:
             tags.remove(tag_clean)
             await self.repository.db.execute(
-                "UPDATE memories SET tags_json = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+                "UPDATE memories SET tags_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
                 (json.dumps(tags, ensure_ascii=False), memory_id),
             )
 
@@ -142,7 +142,7 @@ class MemoryQueryAPI:
             new_reinforcement = max(0.0, current_reinforcement - 0.1)
 
         await self.repository.db.execute(
-            "UPDATE memories SET confidence_score = ?, reinforcement_score = ?, updated_at = CURRENT_TIMESTAMP WHERE memory_id = ?;",
+            "UPDATE memories SET confidence_score = ?, reinforcement_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
             (new_confidence, new_reinforcement, memory_id),
         )
         await self.repository.append_audit(

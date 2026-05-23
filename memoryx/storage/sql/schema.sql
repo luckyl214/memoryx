@@ -259,3 +259,100 @@ CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
     INSERT INTO memories_fts(rowid, memory_id, content, content_summary)
     VALUES (new.rowid, new.id, new.content, coalesce(new.content_summary, ''));
 END;
+
+-- =============================================================================
+-- Palace of Memory (记忆宫殿)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS palace_wings (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    wing_type TEXT NOT NULL DEFAULT 'general',
+    active_state TEXT NOT NULL DEFAULT 'active',
+    checksum TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS palace_rooms (
+    id TEXT PRIMARY KEY,
+    wing_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    room_type TEXT NOT NULL DEFAULT 'general',
+    active_state TEXT NOT NULL DEFAULT 'active',
+    checksum TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY(wing_id) REFERENCES palace_wings(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS palace_drawers (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    active_state TEXT NOT NULL DEFAULT 'active',
+    checksum TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY(room_id) REFERENCES palace_rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS palace_tunnels (
+    id TEXT PRIMARY KEY,
+    source_room_id TEXT NOT NULL,
+    target_room_id TEXT NOT NULL,
+    tunnel_type TEXT NOT NULL DEFAULT 'association',
+    label TEXT NOT NULL DEFAULT '',
+    weight REAL NOT NULL DEFAULT 1.0,
+    active_state TEXT NOT NULL DEFAULT 'active',
+    checksum TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY(source_room_id) REFERENCES palace_rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY(target_room_id) REFERENCES palace_rooms(id) ON DELETE CASCADE
+);
+
+-- =============================================================================
+-- Conversation Logs (会话日志)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS conversation_logs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    turn_index INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    token_count INTEGER,
+    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS conversation_logs_fts USING fts5(
+    content,
+    role,
+    content_rowid='rowid',
+    tokenize='unicode61'
+);
+
+CREATE INDEX IF NOT EXISTS idx_palace_wing_active
+ON palace_wings(active_state, name);
+
+CREATE INDEX IF NOT EXISTS idx_palace_rooms_wing
+ON palace_rooms(wing_id, active_state);
+
+CREATE INDEX IF NOT EXISTS idx_palace_drawers_room
+ON palace_drawers(room_id, active_state);
+
+CREATE INDEX IF NOT EXISTS idx_palace_tunnels_source
+ON palace_tunnels(source_room_id, active_state);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_logs_session
+ON conversation_logs(session_id, turn_index);
