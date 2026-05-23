@@ -1,57 +1,92 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
-from .events import MemoryEventType
-from .manager import MemoryHookManager
+from memoryx.events import MemoryEventType
+from memoryx.manager import MemoryHookManager
+
+try:
+    from memoryx.hermes_bridge import HermesMemoryBridge
+except Exception:  # pragma: no cover
+    HermesMemoryBridge = None  # type: ignore[assignment]
 
 
-def register(ctx) -> None:
+def register(ctx: Any) -> None:
+    """Register MemoryX Hermes hooks.
+
+    This keeps the existing async event pipeline while adding optional bridge
+    returns for Hermes runtimes that can consume context/guard results.
+    """
     settings = getattr(ctx, "memoryx_settings", None)
-    if settings is None:
-        from .config import get_settings
-
-        settings = get_settings()
-
-    from .logging import configure_logging, get_logger
-
-    settings.ensure_directories()
-    configure_logging(
-        settings.logs_dir,
-        settings.log_level,
-        max_bytes=settings.log_rotation_bytes,
-        backup_count=settings.log_backup_count,
-    )
-    logger = get_logger("memoryx")
+    logger = getattr(ctx, "logger", None)
     manager = MemoryHookManager(settings=settings, logger=logger)
     ctx.memoryx_manager = manager
-    ctx.memoryx_listener = manager.listener
 
-    def _enqueue(event_type: MemoryEventType, session_id, payload):
-        return manager.emit(event_type, session_id, payload)
+    bridge = getattr(ctx, "memoryx_bridge", None)
 
-    def _fire_and_forget(coro):
-        try:
-            asyncio.get_running_loop().create_task(coro)
-        except RuntimeError:
-            asyncio.run(coro)
+    async def _emit(event_type: MemoryEventType, session_id: str, payload: dict[str, Any]) -> None:
+        await manager.emit(event_type, session_id, payload)
 
-    ctx.register_hook("on_user_message", lambda **kw: _enqueue(MemoryEventType.ON_USER_MESSAGE, kw.get("session_id"), kw))
-    ctx.register_hook("on_assistant_response", lambda **kw: _enqueue(MemoryEventType.ON_ASSISTANT_RESPONSE, kw.get("session_id"), kw))
-    ctx.register_hook("on_tool_call", lambda **kw: _enqueue(MemoryEventType.ON_TOOL_CALL, kw.get("session_id"), kw))
-    ctx.register_hook("on_tool_result", lambda **kw: _enqueue(MemoryEventType.ON_TOOL_RESULT, kw.get("session_id"), kw))
-    ctx.register_hook("on_session_end", lambda **kw: _enqueue(MemoryEventType.ON_SESSION_END, kw.get("session_id"), kw))
+    async def on_user_message(session_id: str, content: str = "", **extra: Any):
+        await _emit(MemoryEventType.ON_USER_MESSAGE, session_id, {"content": content, **extra})
+        if bridge is not None and hasattr(bridge, "on_user_message"):
+            return await bridge.on_user_message(session_id=session_id, content=content, **extra)
+        return None
+
+    async def on_assistant_response(session_id: str, content: str = "", **extra: Any):
+        await _emit(MemoryEventType.ON_ASSISTANT_RESPONSE, session_id, {"content": content, **extra})
+        if bridge is not None and hasattr(bridge, "on_assistant_response"):
+            return await bridge.on_assistant_response(session_id=session_id, content=content, **extra)
+        return None
+
+    async def on_tool_call(session_id: str, tool_name: str = "", args: dict | None = None, **extra: Any):
+        payload = {"tool_name": tool_name, "args": args or {}, **extra}
+        await _emit(MemoryEventType.ON_TOOL_CALL, session_id, payload)
+        if bridge is not None and hasattr(bridge, "on_tool_call"):
+            return await bridge.on_tool_call(session_id=session_id, tool_name=tool_name, args=args or {}, **extra)
+        return None
+
+    async def on_tool_result(session_id: str, tool_name: str = "", result: dict | str | None = None, **extra: Any):
+        payload = {"tool_name": tool_name, "result": result, **extra}
+        await _emit(MemoryEventType.ON_TOOL_RESULT, session_id, payload)
+        if bridge is not None and hasattr(bridge, "on_tool_result"):
+            return await bridge.on_tool_result(session_id=session_id, tool_name=tool_name, result=result, **extra)
+        return None
+
+    async def on_session_end(session_id: str, **extra: Any):
+        await _emit(MemoryEventType.ON_SESSION_END, session_id, extra)
+        if bridge is not None and hasattr(bridge, "on_session_end"):
+            return await bridge.on_session_end(session_id=session_id, **extra)
+        return None
+
+    async def on_session_finalize():
+        await manager.stop()
+
+    # Hermes-like contexts in tests expose register_hook; some expose dict hooks.
+    if hasattr(ctx, "register_hook"):
+        ctx.register_hook("on_user_message", on_user_message)
+        ctx.register_hook("on_assistant_response", on_assistant_response)
+        ctx.register_hook("on_tool_call", on_tool_call)
+        ctx.register_hook("on_tool_result", on_tool_result)
+        ctx.register_hook("on_session_end", on_session_end)
+        ctx.register_hook("on_session_finalize", on_session_finalize)
+    else:
+        hooks = getattr(ctx, "hooks", None)
+        if hooks is None:
+            hooks = {}
+            ctx.hooks = hooks
+        hooks["on_user_message"] = on_user_message
+        hooks["on_assistant_response"] = on_assistant_response
+        hooks["on_tool_call"] = on_tool_call
+        hooks["on_tool_result"] = on_tool_result
+        hooks["on_session_end"] = on_session_end
+        hooks["on_session_finalize"] = on_session_finalize
 
     if hasattr(ctx, "register_middleware"):
         ctx.register_middleware(manager.middleware)
-
-    async def _startup() -> None:
-        await manager.start()
-
-    _fire_and_forget(_startup())
-
-    async def _shutdown(**kwargs: Any) -> None:
-        await manager.stop()
-
-    ctx.register_hook("on_session_finalize", _shutdown)
+    else:
+        middlewares = getattr(ctx, "middlewares", None)
+        if middlewares is None:
+            middlewares = []
+            ctx.middlewares = middlewares
+        middlewares.append(manager.middleware)

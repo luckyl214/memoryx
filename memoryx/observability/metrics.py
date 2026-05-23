@@ -1,12 +1,13 @@
 """Prometheus-compatible metrics for MemoryX.
 
-If prometheus-client is unavailable, these metrics degrade to no-ops so the
-library remains importable for minimal installations.
+P12.1 hardens the metric API so callers cannot accidentally provide a wrong
+label set. Existing metrics degrade to no-op objects if prometheus-client is not
+installed.
 """
 
 from __future__ import annotations
 
-try:  # pragma: no cover - depends on optional runtime package
+try:  # pragma: no cover - optional dependency
     from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 except Exception:  # pragma: no cover
     Counter = None  # type: ignore[assignment]
@@ -40,21 +41,9 @@ def _histogram(name: str, doc: str, labels: list[str] | None = None, buckets=Non
 
 
 _LATENCY_BUCKETS = (
-    0.0005,
-    0.001,
-    0.0025,
-    0.005,
-    0.01,
-    0.025,
-    0.05,
-    0.1,
-    0.25,
-    0.5,
-    1.0,
-    2.5,
-    5.0,
+    0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05,
+    0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
 )
-
 _SCORE_BUCKETS = (0.0, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0)
 
 rest_requests_total = _counter(
@@ -107,6 +96,29 @@ mcp_tool_calls_total = _counter(
     "MCP tool calls by tool name and status.",
     ["tool", "status"],
 )
+
+llm_safety_events_total = _counter(
+    "memoryx_llm_safety_events_total",
+    "LLM safety guard decisions.",
+    ["surface", "decision", "severity"],
+)
+
+
+def record_rest_request(*, route: str, method: str, status_code: int | str) -> None:
+    """Record a REST request with the canonical label set."""
+    rest_requests_total.labels(
+        route=str(route),
+        method=str(method).upper(),
+        status_code=str(status_code),
+    ).inc()
+
+
+def observe_rest_request(*, route: str, method: str, seconds: float) -> None:
+    rest_request_seconds.labels(route=str(route), method=str(method).upper()).observe(float(seconds))
+
+
+def record_llm_safety_event(*, surface: str, decision: str, severity: str) -> None:
+    llm_safety_events_total.labels(surface=surface, decision=decision, severity=severity).inc()
 
 
 def metrics_response_bytes() -> bytes:
