@@ -46,7 +46,7 @@ class FakeSession:
 async def test_generic_client_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     client = GenericLLMExtractionClient(
         base_url="https://example.invalid/v1/extract",
-        api_key="secret",
+        api_key=os.environ.get("TEST_API_KEY", "test_key"),
         model="generic-model",
         timeout_seconds=0.1,
         retry_attempts=3,
@@ -76,7 +76,7 @@ async def test_generic_client_retries_then_succeeds(monkeypatch: pytest.MonkeyPa
 async def test_generic_client_raises_on_invalid_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     client = GenericLLMExtractionClient(
         base_url="https://example.invalid/v1/extract",
-        api_key="secret",
+        api_key=os.environ.get("TEST_API_KEY", "test_key"),
         model="generic-model",
         timeout_seconds=0.1,
         retry_attempts=1,

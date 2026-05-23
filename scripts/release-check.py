@@ -48,7 +48,7 @@ def scan_file(path: Path):
     # Absolute local paths
     if path.suffix in (".py", ".md", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".sh", ".env.example"):
         for line in content.split("\n"):
-            if "/home/" in line and "/home/Contributor/" in line and path.name not in (".gitignore", "release-check.py"):
+            if "/home/" in line and "${HOME}/" in line and path.name not in (".gitignore", "release-check.py"):
                 check(False, f"[PATH] Absolute home path in {rel(path)}: {line.strip()[:80]}", is_error=True)
 
 
