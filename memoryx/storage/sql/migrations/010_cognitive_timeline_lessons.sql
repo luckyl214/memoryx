@@ -205,7 +205,7 @@ ON memory_similarity_edges(source_memory_id, combined_score DESC);
 CREATE INDEX IF NOT EXISTS idx_lesson_active_severity
 ON lesson_memories(active_state, severity DESC, updated_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_task_durations_entity_time
+CREATE INDEX IF NOT EXISTS idx_taYOUR_API_KEY_HERE
 ON task_durations(entity_id, start_time, end_time);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_session_status

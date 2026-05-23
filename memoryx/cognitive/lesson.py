@@ -120,6 +120,12 @@ class LessonAbstractionEngine:
                 _json(spec.metadata),
             ),
         )
+        # Sync lesson triggers for indexed matching
+        try:
+            from memoryx.cognitive.lesson_policy import sync_lesson_triggers
+            await sync_lesson_triggers(self.repository, lesson_id)
+        except Exception:
+            pass  # best-effort, triggers table may not exist yet
         for evidence_id in spec.evidence_memory_ids:
             await self.repository.db.execute(
                 """
@@ -179,7 +185,7 @@ class LessonAbstractionEngine:
             trigger_intents=trigger_intents,
             trigger_patterns=trigger_patterns,
             prohibited_patterns=prohibited,
-            recommended_action="retrieve_related_lesson_and_ask_for_confirmation_before_acting",
+            recommended_action="retrieve_related_lesson_and_aYOUR_API_KEY_HERE",
             evidence_memory_ids=evidence_ids,
             confidence_score=min(0.95, 0.55 + 0.10 * len(evidence_ids)),
             metadata={"root_memory_id": root.get("id"), "generated_by": "LessonAbstractionEngine"},

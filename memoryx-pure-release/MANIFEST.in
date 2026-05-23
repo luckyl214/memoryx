@@ -1,0 +1,14 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include CREDITS.md
+include CONTRIBUTING.md
+include SECURITY.md
+include CODE_OF_CONDUCT.md
+include pyproject.toml
+include requirements.txt
+include pytest.ini
+include .env.example
+recursive-include db *.sql
+recursive-include tests *.py
+recursive-include memoryx/storage/sql *.sql

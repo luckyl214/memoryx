@@ -1,8 +1,8 @@
 {
   "stats": {
-    "started_at": "2026-05-23T11:11:04.364223+00:00",
-    "finished_at": "2026-05-23T11:11:08.057620+00:00",
-    "duration_seconds": 3.693,
+    "started_at": "2026-05-23T12:32:32.996526+00:00",
+    "finished_at": "2026-05-23T12:32:36.963801+00:00",
+    "duration_seconds": 3.967,
     "root": "/home/lucky/memoryx",
     "python": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
     "counts": {
@@ -70,7 +70,7 @@
       "check": "migrations_apply",
       "severity": "INFO",
       "status": "pass",
-      "message": "2 migrations apply cleanly.",
+      "message": "3 migrations apply cleanly.",
       "path": "",
       "detail": {}
     },
@@ -195,12 +195,22 @@
       "detail": {
         "matches": [
           {
+            "path": "memoryx-pure-release/tools/memoryx_production_selfcheck.py",
+            "line": 637,
+            "pattern": "threading.Thread(...daemon=True)"
+          },
+          {
+            "path": "memoryx-pure-release/memoryx/retrieval/weights.py",
+            "line": 109,
+            "pattern": "threading.Thread(...daemon=True)"
+          },
+          {
             "path": "memoryx/retrieval/weights.py",
             "line": 109,
             "pattern": "threading.Thread(...daemon=True)"
           }
         ],
-        "total": 1
+        "total": 3
       }
     },
     {

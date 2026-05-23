@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-测试 SiliconFlow Qwen3 Embedding API
+测试 OPENAI_COMPATIBLE text-embedding-model API
 """
 
 import asyncio
@@ -27,13 +27,13 @@ MEMORYX_DB = MEMORYX_DIR / "memoryx.db"
 DATA_DIR = MEMORYX_DIR / "data"
 VECTOR_STORE_PATH = DATA_DIR / "vectors.json"
 
-EMBEDDING_ENDPOINT = os.getenv("MEMORYX_EMBEDDING_ENDPOINT")
+EMBEDDING_ENDPOINT = https://api.openai.com/v1/embeddings
 EMBEDDING_API_KEY = os.getenv("MEMORYX_EMBEDDING_API_KEY")
 EMBEDDING_MODEL = os.getenv("MEMORYX_EMBEDDING_MODEL")
 EMBEDDING_DIMENSION = int(os.getenv("MEMORYX_EMBEDDING_DIMENSION", "4096"))
 
 print("="*70)
-print("🔧 SiliconFlow Qwen3 Embedding API 测试")
+print("🔧 OPENAI_COMPATIBLE text-embedding-model API 测试")
 print("="*70)
 print(f"\n   端点: {EMBEDDING_ENDPOINT}")
 print(f"   模型: {EMBEDDING_MODEL}")
@@ -44,7 +44,7 @@ async def test_embedding():
     
     client = GenericEmbeddingClient(
         endpoint=EMBEDDING_ENDPOINT,
-        api_key=EMBEDDING_API_KEY,
+        api_key="your_api_key_here",
         model=EMBEDDING_MODEL,
         timeout_seconds=20.0,
         max_retries=2,
@@ -70,7 +70,7 @@ async def test_embedding():
         return None
 
 async def re_embed_all_memories(vectors_template):
-    """将所有记忆重新用 Qwen3 向量化"""
+    """将所有记忆重新用 EmbeddingModel 向量化"""
     print("\n【全量记忆向量化】")
     
     repo = MemoryRepository(MEMORYX_DB)
@@ -93,7 +93,7 @@ async def re_embed_all_memories(vectors_template):
     embedded_count = 0
     client = GenericEmbeddingClient(
         endpoint=EMBEDDING_ENDPOINT,
-        api_key=EMBEDDING_API_KEY,
+        api_key="your_api_key_here",
         model=EMBEDDING_MODEL,
         timeout_seconds=30.0,
         max_retries=2,
@@ -174,7 +174,7 @@ async def main():
         await test_hybrid_search()
     
     print("\n" + "="*70)
-    print("✅ SiliconFlow Qwen3 Embedding 配置完成")
+    print("✅ OPENAI_COMPATIBLE text-embedding-model 配置完成")
     print("="*70)
 
 if __name__ == "__main__":

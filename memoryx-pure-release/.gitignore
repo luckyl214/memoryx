@@ -1,0 +1,74 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual env
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Data / DB (created at runtime)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+logs/
+cache/
+archive/
+markdown/
+exports/
+dead_letters/
+queue/
+
+# Secrets
+.env
+config.yaml
+config.yml
+*.key
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribution
+build/
+dist/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Logs
+*.log
+
+# Additional patterns (security hardening)
+*.bak
+*.old
+*.tmp
+*.temp
+*.swn
+*.swl
+*.swx
+*.env
+*.env.*
+.secrets
+credentials/
+data/
+output/
+*.pem
+*.cert
+*.key
+*.crt
+data/API_CONFIG_REPORT.md

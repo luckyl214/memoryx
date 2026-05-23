@@ -1,8 +1,7 @@
-"""P6: REST API schemas."""
+"""REST API schemas."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -14,6 +13,7 @@ class MemoryCreate(BaseModel):
     importance_score: float = 0.5
     confidence_score: float = 0.5
     session_id: Optional[str] = None
+    scope: str = "global"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -22,6 +22,8 @@ class MemoryUpdate(BaseModel):
     importance_score: Optional[float] = None
     confidence_score: Optional[float] = None
     active_state: Optional[str] = None
+    scope: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class MemoryResponse(BaseModel):
@@ -39,6 +41,12 @@ class SearchRequest(BaseModel):
     query: str
     limit: int = 10
     tag_filter: Optional[list[str]] = None
+    tag_mode: str = "any"
+    session_id: Optional[str] = None
+    scope_filter: Optional[str] = None
+    include_global: bool = True
+    include_lessons: bool = True
+    explain_scores: bool = False
 
 
 class SearchResponse(BaseModel):
@@ -49,6 +57,10 @@ class SearchResponse(BaseModel):
 class FeedbackRequest(BaseModel):
     memory_id: str
     positive: bool
+    reason: str = ""
+    session_id: Optional[str] = None
+    dry_run: bool = False
+    propagate: bool = True
 
 
 class SelfEditPreviewRequest(BaseModel):

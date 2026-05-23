@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+title: Mnemosyne-X
+message: "If you use this software, please cite it."
+type: software
+authors:
+  - family-names: "lucky99"
+    given-names: "Contributor"
+version: "1.1.0"
+date-released: "2026-05-22"
+license: MIT
+repository-code: "https://github.com/lucky99/memoryx"

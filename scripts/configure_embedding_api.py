@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 memoryx Embedding API 配置和测试
-支持多种后端：SenseNova、OpenAI 兼容、本地模型
+支持多种后端：openai_compatible、OpenAI 兼容、本地模型
 """
 
 import asyncio
@@ -31,9 +31,9 @@ EMBEDDING_CACHE_PATH = DATA_DIR / "embedding_cache.json"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Embedding 配置（从 .env 读取）
-EMBEDDING_ENDPOINT = os.getenv("MEMORYX_EMBEDDING_ENDPOINT")
+EMBEDDING_ENDPOINT = https://api.openai.com/v1/embeddings
 EMBEDDING_API_KEY = os.getenv("MEMORYX_EMBEDDING_API_KEY")
-EMBEDDING_MODEL = os.getenv("MEMORYX_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
+EMBEDDING_MODEL = os.getenv("MEMORYX_EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_DIMENSION = int(os.getenv("MEMORYX_EMBEDDING_DIMENSION", "4096"))
 
 print("="*70)
@@ -50,7 +50,7 @@ async def test_embedding():
     
     client = GenericEmbeddingClient(
         endpoint=EMBEDDING_ENDPOINT,
-        api_key=EMBEDDING_API_KEY,
+        api_key="your_api_key_here",
         model=EMBEDDING_MODEL,
         timeout_seconds=15.0,
         max_retries=2,
@@ -73,7 +73,7 @@ async def test_embedding():
     except Exception as e:
         print(f"   ❌ Embedding API 不可用: {e}")
         print(f"\n   💡 解决方案:")
-        print(f"      1. SenseNova 当前仅提供 chat 模型，无 embedding 端点")
+        print(f"      1. openai_compatible 当前仅提供 chat 模型，无 embedding 端点")
         print(f"      2. 可切换到其他 embedding 提供商:")
         print(f"         - OpenAI: https://api.openai.com/v1/embeddings")
         print(f"         - Together AI: https://api.together.xyz/v1/embeddings")
@@ -245,7 +245,7 @@ async def generate_config_report():
 | 标签管理 | ✅ 可用 | tag/untag/list_tags |
 | 用户反馈 | ✅ 可用 | feedback 调整置信度 |
 | 时间线版本 | ✅ 可用 | timeline 查看记忆版本 |
-| Embedding API | ⚠️ 需配置 | SenseNova 无 embedding 端点 |
+| Embedding API | ⚠️ 需配置 | openai_compatible 无 embedding 端点 |
 
 ## Embedding 配置建议
 
@@ -253,7 +253,7 @@ async def generate_config_report():
 ```
 MEMORYX_EMBEDDING_PROVIDER=openai-compatible
 MEMORYX_EMBEDDING_ENDPOINT=https://api.openai.com/v1/embeddings
-MEMORYX_EMBEDDING_API_KEY=sk-xxx
+MEMORYX_EMBEDDING_API_KEY=your_api_key_here
 MEMORYX_EMBEDDING_MODEL=text-embedding-3-small
 MEMORYX_EMBEDDING_DIMENSION=1536
 ```
@@ -261,8 +261,8 @@ MEMORYX_EMBEDDING_DIMENSION=1536
 ### 方案 2: Together AI Embedding
 ```
 MEMORYX_EMBEDDING_PROVIDER=openai-compatible
-MEMORYX_EMBEDDING_ENDPOINT=https://api.together.xyz/v1/embeddings
-MEMORYX_EMBEDDING_API_KEY=xxx
+MEMORYX_EMBEDDING_ENDPOINT=https://api.openai.com/v1/embeddings
+MEMORYX_EMBEDDING_API_KEY=your_api_key_here
 MEMORYX_EMBEDDING_MODEL=Alibaba_NLP_GTE/GTE-large-en
 MEMORYX_EMBEDDING_DIMENSION=1024
 ```
