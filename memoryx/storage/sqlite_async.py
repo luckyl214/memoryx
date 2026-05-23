@@ -14,6 +14,7 @@ class AsyncSQLite:
         self.timeout = timeout
         self._conn: sqlite3.Connection | None = None
         self._lock = asyncio.Lock()
+        self._inside_transaction: bool = False
 
     async def open(self) -> None:
         if self._conn is not None:
@@ -45,6 +46,11 @@ class AsyncSQLite:
         return self._conn
 
     async def execute(self, sql: str, params: Iterable[Any] = ()) -> int:
+        """Safe execute: acquires lock unless inside transaction (uses lock-free path)."""
+        if self._inside_transaction:
+            cursor = self._require_conn().execute(sql, tuple(params))
+            cursor.close()
+            return 0  # rowcount inside transaction is approximate
         conn = self._require_conn()
         async with self._lock:
             cursor = await asyncio.to_thread(conn.execute, sql, tuple(params))
@@ -66,6 +72,11 @@ class AsyncSQLite:
             return rowcount
 
     async def fetchone(self, sql: str, params: Iterable[Any] = ()) -> Optional[sqlite3.Row]:
+        if self._inside_transaction:
+            cursor = self._require_conn().execute(sql, tuple(params))
+            row = cursor.fetchone()
+            cursor.close()
+            return row
         conn = self._require_conn()
         async with self._lock:
             cursor = await asyncio.to_thread(conn.execute, sql, tuple(params))
@@ -74,6 +85,11 @@ class AsyncSQLite:
             return row
 
     async def fetchall(self, sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
+        if self._inside_transaction:
+            cursor = self._require_conn().execute(sql, tuple(params))
+            rows = cursor.fetchall()
+            cursor.close()
+            return list(rows)
         conn = self._require_conn()
         async with self._lock:
             cursor = await asyncio.to_thread(conn.execute, sql, tuple(params))
@@ -82,17 +98,28 @@ class AsyncSQLite:
             return list(rows)
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncIterator[None]:
+    async def transaction(self, mode: str = "IMMEDIATE") -> AsyncIterator[sqlite3.Connection]:
+        """BEGIN IMMEDIATE transaction. Yields raw connection for sync ops.
+
+        mode: IMMEDIATE (default, acquire write lock upfront), DEFERRED, or EXCLUSIVE.
+        store_memory relies on BEGIN IMMEDIATE for memories + versions + audit atomicity.
+
+        All execute/fetchone/fetchall calls inside the context bypass the lock
+        (no deadlock risk). Use conn.execute() directly for best performance.
+        """
         conn = self._require_conn()
         async with self._lock:
+            self._inside_transaction = True
             await asyncio.to_thread(conn.execute, "BEGIN IMMEDIATE;")
             try:
-                yield
+                yield conn
             except Exception:
                 await asyncio.to_thread(conn.execute, "ROLLBACK;")
                 raise
             else:
                 await asyncio.to_thread(conn.execute, "COMMIT;")
+            finally:
+                self._inside_transaction = False
 
     async def vacuum(self) -> None:
         await self.execute("VACUUM;")

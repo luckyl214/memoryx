@@ -87,27 +87,47 @@ class MemoryRepository:
         return " OR ".join(tokens) if tokens else ""
 
     async def store_memory(self, record: MemoryRecord) -> str:
+        """Store one memory atomically using BEGIN IMMEDIATE via self.db.transaction(mode='IMMEDIATE').
+
+        Atomic write set: memories + memory_versions + audit_logs.
+        """
         n = self._normalize_record(record)
-        await self.db.execute(
-            """INSERT INTO memories (id,session_id,memory_type,content,content_summary,content_hash,checksum,
-            importance_score,confidence_score,decay_score,recency_score,access_count,reinforcement_score,safety_score,
-            active_state,superseded_by,contradiction_group_id,valid_from,valid_to,archived_at,created_at,updated_at,metadata_json)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),?)
-            ON CONFLICT(id) DO UPDATE SET content=excluded.content,content_hash=excluded.content_hash,
-            checksum=excluded.checksum,importance_score=excluded.importance_score,confidence_score=excluded.confidence_score,
-            decay_score=excluded.decay_score,recency_score=excluded.recency_score,access_count=excluded.access_count,
-            reinforcement_score=excluded.reinforcement_score,safety_score=excluded.safety_score,
-            active_state=excluded.active_state,superseded_by=excluded.superseded_by,
-            contradiction_group_id=excluded.contradiction_group_id,valid_from=excluded.valid_from,
-            valid_to=excluded.valid_to,archived_at=excluded.archived_at,updated_at=datetime('now'),
-            metadata_json=excluded.metadata_json,content_summary=excluded.content_summary,
-            session_id=excluded.session_id,memory_type=excluded.memory_type;""",
-            (n.id,n.session_id,n.memory_type,n.content,n.content_summary,n.content_hash,n.checksum,
-             n.importance_score,n.confidence_score,n.decay_score,n.recency_score,n.access_count,
-             n.reinforcement_score,n.safety_score,n.active_state,n.superseded_by,n.contradiction_group_id,
-             n.valid_from,n.valid_to,n.archived_at,n.metadata_json))
-        await self.append_audit("memories",n.id,"store_memory",after_json={"memory_type":n.memory_type,"checksum":n.checksum})
-        await self.write_version(n.id,n.content,n.checksum)
+
+        async with self.db.transaction(mode="IMMEDIATE") as conn:
+            conn.execute(
+                """INSERT INTO memories (id,session_id,memory_type,content,content_summary,content_hash,checksum,
+                importance_score,confidence_score,decay_score,recency_score,access_count,reinforcement_score,safety_score,
+                active_state,superseded_by,contradiction_group_id,valid_from,valid_to,archived_at,created_at,updated_at,metadata_json)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),?)
+                ON CONFLICT(id) DO UPDATE SET content=excluded.content,content_hash=excluded.content_hash,
+                checksum=excluded.checksum,importance_score=excluded.importance_score,confidence_score=excluded.confidence_score,
+                decay_score=excluded.decay_score,recency_score=excluded.recency_score,access_count=excluded.access_count,
+                reinforcement_score=excluded.reinforcement_score,safety_score=excluded.safety_score,
+                active_state=excluded.active_state,superseded_by=excluded.superseded_by,
+                contradiction_group_id=excluded.contradiction_group_id,valid_from=excluded.valid_from,
+                valid_to=excluded.valid_to,archived_at=excluded.archived_at,updated_at=datetime('now'),
+                metadata_json=excluded.metadata_json,content_summary=excluded.content_summary,
+                session_id=excluded.session_id,memory_type=excluded.memory_type;""",
+                (n.id,n.session_id,n.memory_type,n.content,n.content_summary,n.content_hash,n.checksum,
+                 n.importance_score,n.confidence_score,n.decay_score,n.recency_score,n.access_count,
+                 n.reinforcement_score,n.safety_score,n.active_state,n.superseded_by,n.contradiction_group_id,
+                 n.valid_from,n.valid_to,n.archived_at,n.metadata_json))
+
+            # Write memory_version
+            cur = conn.execute("SELECT COALESCE(MAX(version),0)+1 FROM memory_versions WHERE memory_id=?;",(n.id,))
+            next_ver = int(cur.fetchone()[0])
+            now = self._now_iso()
+            conn.execute(
+                "INSERT INTO memory_versions(id,memory_id,version,content,content_hash,checksum,valid_from,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?,?);",
+                (uuid4().hex,n.id,next_ver,n.content,n.content_hash,n.checksum,n.valid_from or now,now,"{}"))
+
+            # Write audit_log
+            conn.execute(
+                "INSERT INTO audit_logs(id,entity_type,entity_id,action,after_json,checksum,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?);",
+                (uuid4().hex,"memories",n.id,"store_memory",
+                 json.dumps({"memory_type":n.memory_type,"checksum":n.checksum}),
+                 self.checksum(f"{n.id}:store_memory:{now}"),now,"{}"))
+
         return n.id
 
     async def store_memories(self, records: list[MemoryRecord]) -> int:
@@ -242,3 +262,48 @@ class MemoryRepository:
         now = self._now_iso()
         await self.db.execute("UPDATE memories SET active_state='archived',valid_to=?,updated_at=? WHERE id=?;",(now,now,memory_id))
         await self.append_audit("memories",memory_id,"rollback_memory")
+
+    async def update_memory_versioned(
+        self, memory_id: str, changes: dict[str, Any], *, actor: str = "system", reason: str = ""
+    ) -> str:
+        """Version-preserving memory update. Writes version + audit atomically."""
+        ALLOWED = {
+            "content", "importance_score", "confidence_score", "decay_score",
+            "recency_score", "active_state", "valid_from", "valid_to", "scope",
+            "session_id", "entities_json", "tags_json", "metadata_json",
+        }
+        safe = {k: v for k, v in changes.items() if k in ALLOWED and k != "id"}
+        if not safe:
+            return memory_id
+
+        async with self.db.transaction() as conn:
+            if "content" in safe:
+                safe["checksum"] = self.checksum(str(safe["content"]))
+                safe["content_hash"] = safe["checksum"]
+            safe["updated_at"] = self._now_iso()
+
+            set_sql = ", ".join(f"{k}=?" for k in safe)
+            conn.execute(f"UPDATE memories SET {set_sql} WHERE id=?;", (*safe.values(), memory_id))
+
+            row = conn.execute("SELECT content, checksum FROM memories WHERE id=?;", (memory_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"memory not found: {memory_id}")
+            content_val = row["content"]
+            checksum_val = row["checksum"]
+
+            cur = conn.execute("SELECT COALESCE(MAX(version),0)+1 FROM memory_versions WHERE memory_id=?;", (memory_id,))
+            next_ver = int(cur.fetchone()[0])
+            now = self._now_iso()
+            conn.execute(
+                "INSERT INTO memory_versions(id,memory_id,version,content,content_hash,checksum,valid_from,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?,?);",
+                (uuid4().hex, memory_id, next_ver, content_val, checksum_val, checksum_val, now, now, "{}"),
+            )
+
+            conn.execute(
+                "INSERT INTO audit_logs(id,entity_type,entity_id,action,before_json,after_json,checksum,created_at,actor,metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?);",
+                (uuid4().hex, "memories", memory_id, "update_versioned", None,
+                 json.dumps({"changed": list(safe), "reason": reason}),
+                 self.checksum(f"update:{memory_id}:{now}"), now, actor, "{}"),
+            )
+
+        return memory_id
