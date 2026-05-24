@@ -198,19 +198,59 @@ class FeishuSQLiteQueue:
             WHERE job_id=?;
             """, (now, now, row["job_id"]))
 
+            # 读回实际 revision（claim_next 在 SQL 里做了 revision=revision+1）
+            updated_row = conn.execute(
+                "SELECT revision FROM feishu_jobs WHERE job_id=?;",
+                (row["job_id"],),
+            ).fetchone()
+            new_revision = updated_row["revision"] if updated_row else (row["revision"] or 0) + 1
+
             payload = json.loads(row["payload_json"])
             payload["state"] = HermesRunState.RUNNING
+            payload["revision"] = new_revision  # <-- 关键修复：用 SQL 里的实际 revision
             return FeishuRenderJob.from_dict(payload)
 
+    def rescue_stale_jobs(self, *, stale_after_seconds: int = 120, max_attempts: int = 3) -> int:
+        """救回卡住的 job：超过 stale_after_seconds 的 running/thinking 重置为 queued"""
+        now = time.time()
+        cutoff = now - stale_after_seconds
+        rescued = 0
+
+        with self._connect() as conn:
+            rows = conn.execute("""
+            SELECT job_id, state, attempts, payload_json
+            FROM feishu_jobs
+            WHERE state IN ('running', 'thinking')
+              AND locked_at IS NOT NULL
+              AND locked_at < ?
+            """, (cutoff,)).fetchall()
+
+            for row in rows:
+                if int(row["attempts"] or 0) >= max_attempts:
+                    conn.execute("""
+                    INSERT OR REPLACE INTO feishu_dead_letters(job_id, payload_json, reason, attempts, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, (row["job_id"], row["payload_json"], "stale_running_max_attempts", row["attempts"], now))
+                    conn.execute("DELETE FROM feishu_jobs WHERE job_id=?", (row["job_id"],))
+                else:
+                    conn.execute("""
+                    UPDATE feishu_jobs
+                    SET state='queued', visible_state='queued', locked_at=NULL, updated_at=?
+                    WHERE job_id=?
+                    """, (now, row["job_id"]))
+                rescued += 1
+
+        return rescued
+
     def update(self, job: FeishuRenderJob) -> None:
-        """更新 job 状态（P14.3: 包含 revision 防乱序）"""
+        """更新 job 状态（去掉 revision 过滤，防止状态更新被阻塞）"""
         now = time.time()
 
         with self._connect() as conn:
             conn.execute("""
             UPDATE feishu_jobs
             SET state=?, visible_state=?, phase=?, revision=?, card_message_id=?, payload_json=?, updated_at=?, locked_at=NULL
-            WHERE job_id=? AND revision >= ?;
+            WHERE job_id=?;
             """, (
                 str(job.state),
                 str(job.visible_state),
@@ -220,7 +260,6 @@ class FeishuSQLiteQueue:
                 json.dumps(job.to_dict(), ensure_ascii=False),
                 now,
                 job.job_id,
-                job.revision,  # 只更新 >= 当前 revision 的记录
             ))
 
     def mark_attachment_status(self, att_id: str, *, download_status: str, local_path: str | None = None, error_msg: str | None = None) -> None:

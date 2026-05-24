@@ -91,8 +91,26 @@ class FeishuHermesBotService:
         try:
             job.card_message_id = resp["data"]["message_id"]
             self.queue.update(job)
-        except Exception:
-            pass  # 卡片发送失败不阻断入队
+            # 追踪：卡片发送成功
+            if self.trace_store:
+                self.trace_store.record(
+                    job_id=job.job_id,
+                    trace_id=job.trace_id,
+                    phase="received",
+                    event_type="card_sent",
+                    payload={"card_message_id": job.card_message_id},
+                )
+        except Exception as exc:
+            # 卡片发送失败不阻断入队，但记录错误
+            if self.trace_store:
+                self.trace_store.record(
+                    job_id=job.job_id,
+                    trace_id=job.trace_id,
+                    phase="received",
+                    event_type="card_send_failed",
+                    payload={"error": str(exc)},
+                )
+            raise
 
         return job.job_id
 
@@ -103,13 +121,16 @@ class FeishuHermesBotService:
         on_stage: Callable[[RunnerStage, str], Awaitable[None]] | None = None,
     ) -> bool:
         """领取一个 job 并处理（P14.3 增强版）"""
+        # 救回卡住的 stale job
+        rescued = self.queue.rescue_stale_jobs(stale_after_seconds=120, max_attempts=3)
+        if rescued:
+            pass  # rescued 数量可用于日志
+
         job = self.queue.claim_next()
         if not job:
             return False
 
         job.state = HermesRunState.RUNNING
-        job.update_visible_state("prepare")
-        self.queue.update(job)
 
         # 记录追踪
         if self.trace_store:
@@ -199,6 +220,16 @@ class FeishuHermesBotService:
             await self._update_card(job)
             self.queue.update(job)
 
+            # 追踪：job 完成
+            if self.trace_store and job.state == HermesRunState.DONE:
+                self.trace_store.record(
+                    job_id=job.job_id,
+                    trace_id=job.trace_id,
+                    phase="done",
+                    event_type="job_done",
+                    payload={"answer_length": len(job.answer)},
+                )
+
         return True
 
     async def _update_card(self, job: FeishuRenderJob) -> None:
@@ -216,7 +247,17 @@ class FeishuHermesBotService:
             sender=self._do_patch,
         )
 
-        if not sent:
+        if sent:
+            # 追踪：卡片更新成功
+            if self.trace_store:
+                self.trace_store.record(
+                    job_id=job.job_id,
+                    trace_id=job.trace_id,
+                    phase="card_update",
+                    event_type="card_patch_done",
+                    payload={"revision": job.revision},
+                )
+        else:
             # revision 过旧或内容相同，跳过
             pass
 
