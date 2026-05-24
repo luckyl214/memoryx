@@ -38,11 +38,15 @@ def create_feishu_router(*, bot_service, queue_db_path: str) -> APIRouter:
     async def feishu_events(request: Request):
         raw = await request.body()
 
-        # 1. 安全解析（签名验证 + 解密）
-        try:
-            payload = parse_event_request(raw, app_id, app_secret)
-        except Exception as exc:
-            raise HTTPException(400, f"event parse error: {exc}")
+        # 1. Parse payload (skip security for Hermes-gateway forwarded events)
+        forwarded_by = request.headers.get("x-forwarded-by", "")
+        if forwarded_by == "hermes-gateway":
+            payload = json.loads(raw.decode("utf-8"))
+        else:
+            try:
+                payload = parse_event_request(raw, app_id, app_secret)
+            except Exception as exc:
+                raise HTTPException(400, f"event parse error: {exc}")
 
         # 2. URL Verification
         challenge_result = verify_challenge(payload, verification_token)
