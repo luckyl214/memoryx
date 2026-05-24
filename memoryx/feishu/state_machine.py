@@ -13,7 +13,7 @@ from .schemas import STATE_VIEW, VisibleState
 ALLOWED_TRANSITIONS = {
     VisibleState.RECEIVED: {VisibleState.QUEUED, VisibleState.ERROR},
     VisibleState.QUEUED: {VisibleState.THINKING, VisibleState.ERROR},
-    VisibleState.THINKING: {VisibleState.USING_TOOLS, VisibleState.WRITING, VisibleState.ERROR},
+    VisibleState.THINKING: {VisibleState.USING_TOOLS, VisibleState.WRITING, VisibleState.DONE, VisibleState.ERROR},
     VisibleState.USING_TOOLS: {VisibleState.THINKING, VisibleState.WAITING_USER, VisibleState.WRITING, VisibleState.ERROR},
     VisibleState.WAITING_USER: {VisibleState.USING_TOOLS, VisibleState.ERROR},
     VisibleState.WRITING: {VisibleState.DONE, VisibleState.DEGRADED, VisibleState.ERROR},
