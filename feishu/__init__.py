@@ -12,6 +12,14 @@ from .renderer import FeishuCardRenderer, STATE_META
 from .client import FeishuClient, FeishuAPIError
 from .queue import FeishuSQLiteQueue
 from .bot_service import FeishuHermesBotService, HermesRunner
+from .dedupe import FeishuEventDedupe
+from .event_security import (
+    verify_challenge,
+    verify_signature,
+    decrypt_event,
+    parse_event_request,
+)
+from .routes import create_feishu_router
 
 __all__ = [
     "AttachmentRef",
@@ -26,4 +34,10 @@ __all__ = [
     "FeishuSQLiteQueue",
     "FeishuHermesBotService",
     "HermesRunner",
+    "FeishuEventDedupe",
+    "verify_challenge",
+    "verify_signature",
+    "decrypt_event",
+    "parse_event_request",
+    "create_feishu_router",
 ]

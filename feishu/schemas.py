@@ -73,6 +73,13 @@ class FeishuRenderJob:
     card_message_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Queue fields (not used in rendering, only for persistence)
+    priority: int = 100
+    attempts: int = 0
+    locked_at: float | None = None
+    created_at: float | None = None
+    updated_at: float | None = None
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["state"] = str(self.state)

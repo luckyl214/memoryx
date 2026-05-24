@@ -4,6 +4,11 @@ SQLite 持久队列：忙碌不丢附件。
 
 设计原则：飞书事件进来后，先入库，再处理。
 哪怕 Hermes 正忙、进程重启、stream 断开，附件 metadata 和本地路径也不会丢。
+
+P14.1 硬化：
+  - max_attempts 限制重试次数
+  - 超过次数自动移入 dead_letter
+  - feishu_attachments 表真正使用（双写）
 """
 from __future__ import annotations
 
@@ -30,6 +35,7 @@ class FeishuSQLiteQueue:
 
     def _init(self) -> None:
         with self._connect() as conn:
+            # --- feishu_jobs ---
             conn.execute("""
             CREATE TABLE IF NOT EXISTS feishu_jobs (
                 job_id TEXT PRIMARY KEY,
@@ -52,6 +58,7 @@ class FeishuSQLiteQueue:
             ON feishu_jobs(state, priority, created_at);
             """)
 
+            # --- feishu_attachments ---
             conn.execute("""
             CREATE TABLE IF NOT EXISTS feishu_attachments (
                 id TEXT PRIMARY KEY,
@@ -65,6 +72,8 @@ class FeishuSQLiteQueue:
                 local_path TEXT,
                 source_message_id TEXT,
                 status TEXT NOT NULL DEFAULT 'queued',
+                download_status TEXT NOT NULL DEFAULT 'pending',
+                error_msg TEXT,
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL,
@@ -77,7 +86,20 @@ class FeishuSQLiteQueue:
             ON feishu_attachments(job_id, status);
             """)
 
+            # --- feishu_dead_letters ---
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS feishu_dead_letters (
+                job_id TEXT PRIMARY KEY,
+                payload_json TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                attempts INTEGER NOT NULL,
+                last_error TEXT,
+                created_at REAL NOT NULL
+            );
+            """)
+
     def enqueue(self, job: FeishuRenderJob, *, priority: int = 100) -> str:
+        """入队，同时双写 attachments"""
         now = time.time()
         payload = json.dumps(job.to_dict(), ensure_ascii=False)
 
@@ -101,20 +123,64 @@ class FeishuSQLiteQueue:
                 now,
             ))
 
+            # 双写 attachments
+            for i, att in enumerate(job.attachments):
+                att_id = f"{job.job_id}_att_{i}"
+                conn.execute("""
+                INSERT INTO feishu_attachments(
+                    id, job_id, kind, file_key, image_key, name, mime_type,
+                    size, local_path, source_message_id, status, download_status,
+                    metadata_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """, (
+                    att_id,
+                    job.job_id,
+                    att.kind,
+                    att.file_key,
+                    att.image_key,
+                    att.name,
+                    att.mime_type,
+                    att.size,
+                    att.local_path,
+                    att.source_message_id,
+                    "queued",
+                    "pending",
+                    json.dumps(att.extra, ensure_ascii=False),
+                    now,
+                    now,
+                ))
+
         return job.job_id
 
-    def claim_next(self, *, stale_after_seconds: float = 300.0) -> FeishuRenderJob | None:
+    def claim_next(self, *, stale_after_seconds: float = 300.0, max_attempts: int = 3) -> FeishuRenderJob | None:
+        """领取下一个 job，超过 max_attempts 的移入 DLQ"""
         now = time.time()
 
         with self._connect() as conn:
+            # 1. 先把超过次数的 error job 移到 DLQ
+            rows = conn.execute("""
+            SELECT job_id, payload_json, attempts
+            FROM feishu_jobs
+            WHERE state='error' AND attempts >= ?;
+            """, (max_attempts,)).fetchall()
+
+            for r in rows:
+                conn.execute("""
+                INSERT OR REPLACE INTO feishu_dead_letters(job_id, payload_json, reason, attempts, last_error, created_at)
+                VALUES (?, ?, ?, ?, ?, ?);
+                """, (r["job_id"], r["payload_json"], "max_attempts_exceeded", r["attempts"], "", now))
+                conn.execute("DELETE FROM feishu_jobs WHERE job_id=?;", (r["job_id"],))
+
+            # 2. 领取下一个
             row = conn.execute("""
             SELECT *
             FROM feishu_jobs
             WHERE state IN ('queued', 'error')
+              AND attempts < ?
               AND (locked_at IS NULL OR locked_at < ?)
             ORDER BY priority ASC, created_at ASC
             LIMIT 1;
-            """, (now - stale_after_seconds,)).fetchone()
+            """, (max_attempts, now - stale_after_seconds)).fetchone()
 
             if not row:
                 return None
@@ -130,6 +196,7 @@ class FeishuSQLiteQueue:
             return FeishuRenderJob.from_dict(payload)
 
     def update(self, job: FeishuRenderJob) -> None:
+        """更新 job 状态"""
         now = time.time()
 
         with self._connect() as conn:
@@ -145,11 +212,41 @@ class FeishuSQLiteQueue:
                 job.job_id,
             ))
 
+    def mark_attachment_status(self, att_id: str, *, download_status: str, error_msg: str | None = None) -> None:
+        """更新附件下载状态"""
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute("""
+            UPDATE feishu_attachments
+            SET download_status=?, error_msg=?, updated_at=?
+            WHERE id=?;
+            """, (download_status, error_msg, now, att_id))
+
+    def get_attachments_for_job(self, job_id: str) -> list[dict]:
+        """获取 job 的所有附件"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM feishu_attachments WHERE job_id=? ORDER BY created_at;",
+                (job_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def dlq_stats(self) -> dict[str, int]:
+        """DLQ 统计"""
+        with self._connect() as conn:
+            rows = conn.execute("""
+            SELECT reason, COUNT(*) AS n
+            FROM feishu_dead_letters
+            GROUP BY reason;
+            """).fetchall()
+            return {r["reason"]: int(r["n"]) for r in rows}
+
     def stats(self) -> dict[str, int]:
+        """队列统计"""
         with self._connect() as conn:
             rows = conn.execute("""
             SELECT state, COUNT(*) AS n
             FROM feishu_jobs
             GROUP BY state;
             """).fetchall()
-        return {r["state"]: int(r["n"]) for r in rows}
+            return {r["state"]: int(r["n"]) for r in rows}
