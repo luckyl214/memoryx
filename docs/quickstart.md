@@ -10,7 +10,7 @@ Get MemoryX running in under 10 minutes.
 ## Install
 
 ```bash
-git clone https://github.com/luckyl214/memoryx
+git clone https://github.com/YOUR_GITHUB_USERNAME/memoryx
 cd memoryx
 python -m venv .venv
 source .venv/bin/activate

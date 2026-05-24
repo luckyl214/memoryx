@@ -1,8 +1,8 @@
 {
   "stats": {
-    "started_at": "2026-05-23T12:44:39.467626+00:00",
-    "finished_at": "2026-05-23T12:44:43.253874+00:00",
-    "duration_seconds": 3.786,
+    "started_at": "2026-05-23T16:00:36.770114+00:00",
+    "finished_at": "2026-05-23T16:00:39.333996+00:00",
+    "duration_seconds": 2.564,
     "root": "/home/lucky/memoryx",
     "python": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
     "counts": {
@@ -70,7 +70,7 @@
       "check": "migrations_apply",
       "severity": "INFO",
       "status": "pass",
-      "message": "3 migrations apply cleanly.",
+      "message": "5 migrations apply cleanly.",
       "path": "",
       "detail": {}
     },

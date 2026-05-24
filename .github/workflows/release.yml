@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'baseline/*'
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - run: pip install -e ".[dev]"
+
+      - name: Core tests
+        run: pytest -q tests/test_cognitive_learning.py tests/test_cognitive_timeline_opinion.py tests/test_p5_self_editor_consolidation.py
+
+      - name: E2E tests
+        run: pytest -q tests/e2e/
+
+      - name: Production selfcheck
+        run: python tools/memoryx_production_selfcheck.py --root .
+
+      - name: Build wheel
+        run: |
+          pip install build
+          python -m build
+
+      - name: Check package
+        run: |
+          pip install twine
+          twine check dist/*
+
+      - name: Generate SBOM
+        run: |
+          pip install cyclonedx-bom
+          cyclonedx-py environment -o dist/sbom.cdx.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

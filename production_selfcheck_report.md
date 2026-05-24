@@ -2,9 +2,9 @@
 
 - Root: `/home/lucky/memoryx`
 - Python: `3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]`
-- Started: `2026-05-23T12:44:39.467626+00:00`
-- Finished: `2026-05-23T12:44:43.253874+00:00`
-- Duration: `3.786s`
+- Started: `2026-05-23T16:00:36.770114+00:00`
+- Finished: `2026-05-23T16:00:39.333996+00:00`
+- Duration: `2.564s`
 - Worst severity: **WARN**
 
 ## Counts
@@ -32,7 +32,7 @@
 | INFO | `cognitive_static_contract` | `pass` | `` | Cognitive schema compatibility helpers are present. |
 | INFO | `compileall` | `pass` | `` | memoryx/ compiles successfully. |
 | INFO | `mcp_static_contract` | `pass` | `` | MCPServer does not appear to silently return empty vectors without controls. |
-| INFO | `migrations_apply` | `pass` | `` | 3 migrations apply cleanly. |
+| INFO | `migrations_apply` | `pass` | `` | 5 migrations apply cleanly. |
 | INFO | `project_layout` | `pass` | `` | Required MemoryX layout files are present. |
 | INFO | `project_layout` | `pass` | `` | memoryx/cognitive/ exists. |
 | INFO | `python_version` | `pass` | `` | Python version is 3.12.3. |

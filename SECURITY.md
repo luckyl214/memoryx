@@ -12,7 +12,7 @@
 Please do **not** open a public issue for security vulnerabilities.
 
 Use GitHub private vulnerability reporting if enabled, or email:
-security@example.com
+your_email@example.com
 
 Include:
 - Affected version or commit SHA

@@ -30,7 +30,7 @@
 ```bash
 pip install memoryx==1.1.0rc1
 # Or from source:
-git clone https://github.com/luckyl214/memoryx
+git clone https://github.com/YOUR_GITHUB_USERNAME/memoryx
 cd memoryx && pip install -e ".[dev]"
 ```
 
