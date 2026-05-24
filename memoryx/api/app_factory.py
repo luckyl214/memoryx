@@ -41,6 +41,7 @@ try:
         FeishuHermesBotService,
         FeishuTraceStore,
         create_feishu_router,
+        build_feishu_runner,
     )
     FEISHU_AVAILABLE = True
 except ImportError:
@@ -133,15 +134,8 @@ def create_app(
                     trace_store=feishu_trace,
                 )
 
-                # Simple MemoryX-backed runner (placeholder — Hermes integration TBD)
-                async def _feishu_runner(job, on_delta, on_tool, on_stage=None):
-                    from memoryx.feishu.hermes_runner import RunnerStage
-                    if on_stage:
-                        await on_stage(RunnerStage.GENERATE, "MemoryX 处理中")
-                    answer = f"收到：{job.text}\n\n（MemoryX 飞书适配器已就绪）"
-                    for i in range(0, len(answer), 30):
-                        await on_delta(answer[i:i+30])
-                    return answer
+                # Build runner from FEISHU_RUNNER_MODE
+                feishu_runner = build_feishu_runner()
 
                 # Register feishu event routes
                 app.include_router(create_feishu_router(
@@ -153,7 +147,7 @@ def create_app(
                 async def _feishu_worker():
                     while True:
                         try:
-                            await feishu_bot.run_worker_once(_feishu_runner)
+                            await feishu_bot.run_worker_once(feishu_runner)
                         except Exception:
                             pass
                         await asyncio.sleep(1.0)
