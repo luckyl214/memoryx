@@ -1,17 +1,14 @@
-"""统一状态转换入口 — 所有 visible_state 变化必须走这里。
+"""统一状态更新入口 — 所有状态变化只能走这个函数。
 
-P14.4.1 UX Reliability Hotfix:
-- 所有状态变化统一调用 transition_job()
-- 自动校验 assert_transition
-- 自动 revision +1
-- 自动 trace 记录 state_transition
-- 禁止零散改 visible_state / revision
+原则：
+- 所有 state / visible_state / revision 变化统一经过 transition_job
+- 禁止直接写 job.state / job.visible_state
+- 每次 transition 记录 trace 事件
 """
 from __future__ import annotations
 
-import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .state_machine import VisibleState, assert_transition
 
@@ -22,51 +19,40 @@ if TYPE_CHECKING:
 
 
 def transition_job(
-    queue: "FeishuSQLiteQueue",
-    trace: "FeishuTraceStore | None",
-    job: "FeishuRenderJob",
     *,
+    queue: FeishuSQLiteQueue,
+    trace: FeishuTraceStore | None,
+    job: FeishuRenderJob,
     state: str,
     visible_state: str,
     reason: str,
 ) -> None:
-    """统一状态转换：校验 → 同步对象 → 更新 DB → 记录 trace
+    """统一状态更新函数。
+
+    检查合法性 → 更新对象 → 更新 DB → 记录 trace。
 
     Args:
-        queue: 队列实例
-        trace: trace store 实例（可为 None）
-        job: 当前 job 对象（会被原地修改）
-        state: 新内部状态（如 running / done / error）
-        visible_state: 新用户可见状态（如 thinking / done / error）
-        reason: 转换原因（用于 trace）
-
-    Raises:
-        ValueError: 如果 assert_transition 失败
+        queue:  队列（写 DB）
+        trace:  追踪存储
+        job:    当前 job 对象（会被原地修改）
+        state:  新内部状态 (queued|running|done|error)
+        visible_state:  新可见状态 (received|queued|thinking|...|done|error)
+        reason: 转换原因（记录到 trace）
     """
-    old_visible = VisibleState(job.visible_state or job.state or "received")
-    new_visible = VisibleState(visible_state)
+    from .schemas import HermesRunState, VisibleState as VS
 
-    # 1. 校验状态转换
+    old_visible = VS(job.visible_state.value if hasattr(job.visible_state, 'value') else str(job.visible_state))
+    new_visible = VS(visible_state)
     assert_transition(old_visible, new_visible)
 
     now = time.time()
-
-    # 2. 同步 job 对象
-    job.state = state
-    job.visible_state = visible_state
+    job.state = HermesRunState(state)
+    job.visible_state = VS(visible_state)
     job.revision += 1
     job.updated_at = now
 
-    # 3. 更新 DB payload
-    payload_dict = job.to_dict()
-    payload_dict["state"] = state
-    payload_dict["visible_state"] = visible_state
-    payload_dict["revision"] = job.revision
-    payload_dict["updated_at"] = now
-
     queue.update(job)
 
-    # 4. 记录 trace
     if trace:
         trace.record(
             job_id=job.job_id,

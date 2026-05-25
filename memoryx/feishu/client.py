@@ -14,7 +14,6 @@ import json
 import mimetypes
 import os
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,14 +22,6 @@ import httpx
 
 class FeishuAPIError(RuntimeError):
     pass
-
-
-@dataclass(slots=True)
-class FeishuSendCardResult:
-    """发送消息卡片的结果，包含出站卡片 message_id"""
-    message_id: str
-    chat_id: str
-    raw: dict[str, Any]
 
 
 # 需要重试的 HTTP 状态码和飞书错误码
@@ -163,49 +154,7 @@ class FeishuClient:
             json=body,
         )
 
-    async def send_card(self, *, chat_id: str, card: dict[str, Any]) -> FeishuSendCardResult:
-        """发送互动消息卡片，确保返回出站卡片 message_id"""
-        card.setdefault("config", {})
-        card["config"]["update_multi"] = True
-
-        data = await self._request_json(
-            "POST",
-            f"{self.base_url}/open-apis/im/v1/messages",
-            params={"receive_id_type": "chat_id"},
-            headers={**await self._headers(), "Content-Type": "application/json"},
-            json={
-                "receive_id": chat_id,
-                "msg_type": "interactive",
-                "content": json.dumps(card, ensure_ascii=False),
-            },
-        )
-
-        if data.get("code") not in (0, None):
-            raise FeishuAPIError(f"send_card failed: {data}")
-
-        body = data.get("data") or {}
-
-        # 飞书 API 有多种返回格式，尝试所有可能路径
-        message_id = (
-            body.get("message_id")
-            or (body.get("message") or {}).get("message_id")
-            or body.get("messageId")
-        )
-
-        if not message_id:
-            raise FeishuAPIError(
-                f"send_card response missing message_id: chat_id={chat_id} data={data}"
-            )
-
-        return FeishuSendCardResult(message_id=message_id, chat_id=chat_id, raw=data)
-
     async def patch_message_card(self, *, message_id: str, card: dict[str, Any]) -> dict[str, Any]:
-        if not message_id:
-            raise FeishuAPIError("patch_message_card requires non-empty card message_id")
-
-        card.setdefault("config", {})
-        card["config"]["update_multi"] = True
-
         return await self._request_json(
             "PATCH",
             f"{self.base_url}/open-apis/im/v1/messages/{message_id}/card",
