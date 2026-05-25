@@ -19,6 +19,16 @@ class MCPServer:
         self.allow_embedding_fallback = allow_embedding_fallback
         self._tools: dict[str, dict] = {}
 
+        # P8: instrument MCP tools for observability
+        try:
+            from memoryx.mcp.observed import instrument_mcp_server
+            instrument_mcp_server(
+                self,
+                tool_names=["memoryx_search", "memoryx_feedback"],
+            )
+        except ImportError:
+            pass
+
     def list_tools(self) -> list[dict]:
         """返回 MCP 工具列表。"""
         return [

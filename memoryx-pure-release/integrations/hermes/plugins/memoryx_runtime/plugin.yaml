@@ -1,0 +1,4 @@
+name: memoryx_runtime
+version: 1.0.0
+description: "MemoryX runtime activation — context injection, tool guard, auto-store, session reflection"
+author: jiujiu

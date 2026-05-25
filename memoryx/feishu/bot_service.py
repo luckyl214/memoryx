@@ -1,12 +1,10 @@
-"""飞书 → Hermes → 卡片更新服务（P14.3 增强版）。
+"""飞书 → Hermes → 卡片更新服务（P14.4.2 Single-Card Live UX）
 
-P14.3 集成：
-  - 可见状态机（防止状态倒退）
-  - 卡片更新合并器（防乱序、防闪）
-  - 溢出处理（长答案转附件）
-  - 附件预处理（确认 Hermes 能消费）
-  - 全链路追踪
-  - Hermes 真实 Runner（五阶段编排）
+P14.4.2 Feishu Single-Card Live UX Hotfix:
+- 每个阶段都调用 live_card.transition_and_patch()
+- stream delta 只更新卡片，不发文本消息
+- final_view=True 时隐藏过程信息
+- 内部工具信息只进 trace，不进卡片正文
 """
 from __future__ import annotations
 
@@ -15,9 +13,10 @@ import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from .client import FeishuClient
+from .client import FeishuClient, FeishuSendCardResult, FeishuAPIError
 from .queue import FeishuSQLiteQueue
 from .renderer import FeishuCardRenderer
+from .live_card import FeishuLiveCardController
 from .schemas import (
     AttachmentRef,
     FeishuRenderJob,
@@ -73,14 +72,37 @@ class FeishuHermesBotService:
         self.output_policy = output_policy or FeishuOutputPolicy()
         self.attachment_preparer = attachment_preparer or AttachmentPreparer()
         self.trace_store = trace_store
+
         self.coalescer = coalescer or CardUpdateCoalescer(min_interval=update_interval_seconds)
 
+        # P14.4.2: Live Card Controller — 唯一状态更新 + 卡片 patch 入口
+        self.live_card = FeishuLiveCardController(
+            queue=queue,
+            renderer=self.renderer,
+            client=client,
+            trace=trace_store,
+            coalescer=self.coalescer,
+        )
+
     async def accept_event(self, job: FeishuRenderJob) -> str:
-        """接受飞书事件，创建排队中卡片"""
+        """接受飞书事件，创建排队中卡片（P14.4.3: 必须保存 card_message_id）"""
         job.update_visible_state("received")
         self.queue.enqueue(job)
 
-        # 记录追踪
+        # 追踪：job 入队
+        if self.trace_store:
+            self.trace_store.record(
+                job_id=job.job_id,
+                trace_id=job.trace_id,
+                phase="queue",
+                event_type="job_queued",
+                payload={
+                    "chat_id": job.chat_id,
+                    "message_id": job.message_id,
+                    "runner_mode": os.getenv("FEISHU_RUNNER_MODE", "echo"),
+                },
+            )
+
         if self.trace_store:
             self.trace_store.record(
                 job_id=job.job_id,
@@ -90,20 +112,21 @@ class FeishuHermesBotService:
                 payload={"chat_id": job.chat_id, "message_id": job.message_id},
             )
 
-        card = self.renderer.render(job)
+        # P14.4.3: 使用 send_card 发送初始卡片，保存出站 message_id
+        card = self.renderer.render(job, final_view=False)
+        card.setdefault("config", {})
+        card["config"]["update_multi"] = True
 
         try:
-            resp = await self.client.send_message(
-                receive_id=job.chat_id,
-                receive_id_type=job.receive_id_type,
-                msg_type="interactive",
-                content=card,
-                uuid=job.job_id,
+            result = await self.client.send_card(
+                chat_id=job.chat_id,
+                card=card,
             )
 
-            job.card_message_id = resp["data"]["message_id"]
+            job.card_message_id = result.message_id
+            job.revision = int(job.revision or 0) + 1
             self.queue.update(job)
-            # 追踪：卡片发送成功
+
             if self.trace_store:
                 self.trace_store.record(
                     job_id=job.job_id,
@@ -113,7 +136,6 @@ class FeishuHermesBotService:
                     payload={"card_message_id": job.card_message_id},
                 )
         except Exception as exc:
-            # 卡片发送失败不阻断入队，但记录错误
             if self.trace_store:
                 self.trace_store.record(
                     job_id=job.job_id,
@@ -126,69 +148,179 @@ class FeishuHermesBotService:
 
         return job.job_id
 
+    async def ensure_initial_card(self, job) -> None:
+        """P14.4.3: 确保 job 有 card_message_id。没有则发送初始卡片。"""
+        if getattr(job, 'card_message_id', None):
+            return
+
+        card = self.renderer.render(job, final_view=False)
+        card.setdefault("config", {})
+        card["config"]["update_multi"] = True
+
+        result = await self.client.send_card(
+            chat_id=job.chat_id,
+            card=card,
+        )
+
+        job.card_message_id = result.message_id
+        job.revision = int(getattr(job, "revision", 0) or 0) + 1
+
+        track = f'card_message_id={job.card_message_id} revision={job.revision}'
+        self.queue.update(job)
+
+        if self.trace_store:
+            self.trace_store.record(
+                job_id=job.job_id,
+                trace_id=job.trace_id,
+                phase="card",
+                event_type="card_initial_sent",
+                payload={
+                    "card_message_id": job.card_message_id,
+                    "revision": job.revision,
+                    "chat_id": job.chat_id,
+                },
+            )
+
     async def run_worker_once(
         self,
         runner: HermesRunner,
         *,
         on_stage: Callable[[RunnerStage, str], Awaitable[None]] | None = None,
     ) -> bool:
-        """领取一个 job 并处理（P14.3 增强版）"""
-        # 救回卡住的 stale job
-        rescued = self.queue.rescue_stale_jobs(stale_after_seconds=120, max_attempts=3)
-        if rescued:
-            pass  # rescued 数量可用于日志
+        """领取一个 job 并处理（P14.4.2 每阶段 transition_and_patch）"""
+        self.queue.rescue_stale_jobs(stale_after_seconds=120, max_attempts=3)
 
         job = self.queue.claim_next()
         if not job:
             return False
 
-        # 记录追踪（claim_next 已设 state=RUNNING, visible_state=THINKING）
+        # P14.4.3: 确保有 card_message_id，没有则发送初始卡片
+        await self.ensure_initial_card(job)
+
+        # 追踪：job claimed
         if self.trace_store:
             self.trace_store.record(
                 job_id=job.job_id,
                 trace_id=job.trace_id,
-                phase="prepare",
+                phase="worker",
                 event_type="job_claimed",
+                payload={"runner_mode": os.getenv("FEISHU_RUNNER_MODE", "echo")},
             )
 
-        # P14.2: 下载附件（如果有）
-        job.attachments = await self.queue.download_attachments(job, self.client)
-        self.queue.update(job)
+        try:
+            # ── Phase: Prepare ──
+            job.started_at = time.time()
+            await self.live_card.transition_and_patch(
+                job,
+                state="running",
+                visible_state="thinking",
+                phase="prepare",
+                reason="worker_claimed",
+                final_view=False,
+            )
 
-        # P14.3: 附件预处理
-        prepared_attachments = []
-        for att in job.attachments:
-            prepared = self.attachment_preparer.prepare(att)
-            prepared_attachments.append(prepared)
-            if not prepared.is_usable():
-                # 记录不可用附件
+            # 下载附件
+            job.attachments = await self.queue.download_attachments(job, self.client)
+
+            # 附件预处理
+            prepared_attachments = []
+            for att in job.attachments:
+                prepared = self.attachment_preparer.prepare(att)
+                prepared_attachments.append(prepared)
+                if not prepared.is_usable():
+                    if self.trace_store:
+                        self.trace_store.record(
+                            job_id=job.job_id,
+                            trace_id=job.trace_id,
+                            phase="prepare",
+                            event_type="attachment_unusable",
+                            payload={"name": prepared.name, "status": prepared.status},
+                        )
+
+            await self.live_card.transition_and_patch(
+                job,
+                state="running",
+                visible_state="thinking",
+                phase="prepare",
+                reason="prepare_done",
+                final_view=False,
+            )
+
+            # ── Phase: Context ──
+            job.phase_marks = ["prepare"]
+            await self.live_card.transition_and_patch(
+                job,
+                state="running",
+                visible_state="thinking",
+                phase="context",
+                reason="memoryx_context_start",
+                final_view=False,
+            )
+
+            # ── Stream / Tool 回调 ──
+            last_update = 0.0
+
+            async def on_delta(delta: str) -> None:
+                nonlocal last_update
+                clean = self.output_policy.is_internal_noise(delta)
+                if clean:
+                    if self.trace_store:
+                        self.trace_store.record(
+                            job_id=job.job_id,
+                            trace_id=job.trace_id,
+                            phase="stream",
+                            event_type="stream_noise_suppressed",
+                            payload={"preview": delta[:200]},
+                        )
+                    return
+
+                job.answer += delta
+                now = time.monotonic()
+                if now - last_update >= self.update_interval_seconds:
+                    last_update = now
+                    # stream delta 只 patch 卡片，不改状态
+                    await self.live_card.patch_card(
+                        job,
+                        reason="stream_delta",
+                        final_view=False,
+                    )
+
+            async def on_tool(tool: ToolCallRecord) -> None:
                 if self.trace_store:
                     self.trace_store.record(
                         job_id=job.job_id,
                         trace_id=job.trace_id,
-                        phase="prepare",
-                        event_type="attachment_unusable",
-                        payload={"name": prepared.name, "status": prepared.status},
+                        phase="tool",
+                        event_type=f"tool_{tool.status}",
+                        payload={
+                            "name": tool.name,
+                            "phase": tool.phase,
+                            "status": tool.status,
+                            "summary": tool.summary[:500] if tool.summary else "",
+                        },
                     )
 
-        await self._update_card(job)
+                if self.output_policy.should_show_tool(tool):
+                    job.tool_calls.append(tool)
+                    job.phase_marks.append(tool.phase or tool.name)
+                    await self.live_card.patch_card(
+                        job,
+                        reason="tool_update",
+                        final_view=False,
+                    )
 
-        last_update = 0.0
+            # ── Phase: Generate ──
+            job.phase_marks.append("generate")
+            await self.live_card.transition_and_patch(
+                job,
+                state="running",
+                visible_state="thinking",
+                phase="generate",
+                reason="runner_start",
+                final_view=False,
+            )
 
-        async def on_delta(delta: str) -> None:
-            nonlocal last_update
-            job.answer += delta
-            now = time.monotonic()
-            if now - last_update >= self.update_interval_seconds:
-                last_update = now
-                await self._update_card(job)
-
-        async def on_tool(tool: ToolCallRecord) -> None:
-            job.tools.append(tool)
-            await self._update_card(job)
-
-        try:
-            # 追踪：runner 开始
+            # 追踪：runner start
             if self.trace_store:
                 self.trace_store.record(
                     job_id=job.job_id,
@@ -197,18 +329,25 @@ class FeishuHermesBotService:
                     event_type="runner_start",
                     payload={"runner_type": type(runner).__name__},
                 )
+                if type(runner).__name__ in ("ShadowFeishuRunner",):
+                    self.trace_store.record(
+                        job_id=job.job_id,
+                        trace_id=job.trace_id,
+                        phase="hermes",
+                        event_type="hermes_cli_start",
+                        payload={"prompt_length": len(job.text or ""), "mode": "shadow"},
+                    )
 
-            # 使用真实 Hermes Runner
+            # 执行 runner
             if isinstance(runner, RealHermesRunner):
                 final_answer = await runner.run(job, on_delta, on_tool, on_stage)
             else:
-                # 兼容旧式 runner
                 final_answer = await runner(job, on_delta, on_tool)
 
             if final_answer:
                 job.answer = final_answer
 
-            # 追踪：runner 完成
+            # 追踪：runner done
             if self.trace_store:
                 self.trace_store.record(
                     job_id=job.job_id,
@@ -217,8 +356,16 @@ class FeishuHermesBotService:
                     event_type="runner_done",
                     payload={"runner_type": type(runner).__name__, "answer_length": len(final_answer or "")},
                 )
+                if type(runner).__name__ in ("ShadowFeishuRunner",):
+                    self.trace_store.record(
+                        job_id=job.job_id,
+                        trace_id=job.trace_id,
+                        phase="hermes",
+                        event_type="hermes_cli_done",
+                        payload={"answer_length": len(final_answer or ""), "mode": "shadow"},
+                    )
 
-            # P14.4: 溢出处理 — 真正写文件并上传，不说谎
+            # ── Overflow 处理 ──
             overflow = self.overflow_policy.split(job.answer)
             if overflow.overflow:
                 job.answer = overflow.card_text
@@ -272,92 +419,70 @@ class FeishuHermesBotService:
             else:
                 job.answer = overflow.card_text
 
-            # 业务成功：通过 transition_job 同步到 DB
-            transition_job(
-                self.queue, self.trace_store, job,
-                state="done", visible_state="done",
-                reason="runner_completed",
+            # ── Verify / Finalize ──
+            job.phase_marks.append("verify")
+            await self.live_card.transition_and_patch(
+                job,
+                state="running",
+                visible_state="writing",
+                phase="verify",
+                reason="claim_guard_start",
+                final_view=False,
             )
+
+            # ── Done: final view ──
+            job.phase_marks.append("done")
+            job.ended_at = time.time()
+
+            await self.live_card.transition_and_patch(
+                job,
+                state="done",
+                visible_state="done",
+                phase="done",
+                reason="runner_completed",
+                final_view=True,
+            )
+
+            # 标记完成 — 使用 queue.update + release_lock
+            self.queue.update(job)
+            self.queue.release_lock(job.job_id)
+
+            if self.trace_store:
+                self.trace_store.record(
+                    job_id=job.job_id,
+                    trace_id=job.trace_id,
+                    phase="worker",
+                    event_type="job_done",
+                    payload={
+                        "revision": getattr(job, "revision", 0),
+                        "final_view": True,
+                    },
+                )
+
+            return True
 
         except Exception as exc:
             job.error = str(exc)
-            transition_job(
-                self.queue, self.trace_store, job,
-                state="error", visible_state="error",
-                reason="worker_exception",
-            )
 
-            if self.trace_store:
-                self.trace_store.record(
-                    job_id=job.job_id,
-                    trace_id=job.trace_id,
+            try:
+                await self.live_card.transition_and_patch(
+                    job,
+                    state="error",
+                    visible_state="error",
                     phase="error",
-                    event_type="job_failed",
-                    payload={"error": str(exc)},
+                    reason="worker_exception",
+                    final_view=True,
                 )
-        finally:
-            await self._update_card(job)
-            self.queue.release_lock(job.job_id)
-            self.queue.update(job)
+            finally:
+                self.queue.update(job)
+                self.queue.release_lock(job.job_id)
+                if self.trace_store:
+                    self.trace_store.record(
+                        job_id=job.job_id,
+                        trace_id=job.trace_id,
+                        phase="worker",
+                        event_type="job_error",
+                        payload={"error": str(exc)[:1000]},
+                    )
 
-            # 追踪：job 完成
-            if self.trace_store and job.state == HermesRunState.DONE:
-                self.trace_store.record(
-                    job_id=job.job_id,
-                    trace_id=job.trace_id,
-                    phase="done",
-                    event_type="job_done",
-                    payload={"answer_length": len(job.answer)},
-                )
-
-        return True
-
-    async def _update_card(self, job: FeishuRenderJob) -> None:
-        """更新飞书卡片（P14.3: 带 revision 防乱序）"""
-        if not job.card_message_id:
-            return
-
-        card = self.renderer.render(job)
-
-        # 使用 coalescer 防乱序
-        sent = await self.coalescer.patch(
-            message_id=job.card_message_id,
-            card=card,
-            revision=job.revision,
-            sender=lambda msg_id, c: self._do_patch(msg_id, c, job=job),
-        )
-
-        if sent:
-            # 追踪：卡片更新成功
-            if self.trace_store:
-                self.trace_store.record(
-                    job_id=job.job_id,
-                    trace_id=job.trace_id,
-                    phase="card_update",
-                    event_type="card_patch_done",
-                    payload={"revision": job.revision},
-                )
-        else:
-            # revision 过旧或内容相同，跳过
-            pass
-
-    async def _do_patch(self, message_id: str, card: dict, job: FeishuRenderJob | None = None) -> None:
-        """实际发送卡片 patch — patch 失败只记 trace，不阻断 job。"""
-        try:
-            await self.client.patch_message_card(
-                message_id=message_id,
-                card=card,
-            )
-        except Exception as exc:
-            if self.trace_store and job:
-                self.trace_store.record(
-                    job_id=job.job_id,
-                    trace_id=job.trace_id,
-                    phase="card_update",
-                    event_type="card_patch_failed",
-                    payload={
-                        "card_message_id": message_id,
-                        "revision": job.revision,
-                        "error": str(exc)[:1000],
-                    },
-                )
+            return True

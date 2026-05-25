@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memoryx"
-version = "1.1.0"
+version = "1.1.0-rc1"
 description = "Cognitive Memory Operating System — Production-grade long-term memory for AI agents"
 readme = "README.md"
 license = {text = "MIT"}
@@ -24,9 +24,10 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp>=3.9,<4.0",
-    "pydantic>=2.5,<3.0",
+    "pydantic>=2.0",
+    "structlog>=23.0",
+    "prometheus-client>=0.16.0",
     "pydantic-settings>=2.0",
-    "structlog>=24.0",
 ]
 
 [project.optional-dependencies]

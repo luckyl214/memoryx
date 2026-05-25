@@ -1,5 +1,5 @@
 [Unit]
-Description=Mnemosyne-X Memory Service
+Description=Mnemosyne-X Memory REST Service
 After=network.target
 
 [Service]
@@ -7,7 +7,7 @@ Type=simple
 User=%i
 WorkingDirectory=%h/memoryx
 Environment=MEMORYX_ENV_FILE=%h/memoryx/.env
-ExecStart=%h/memoryx/.venv/bin/python -m memoryx
+ExecStart=%h/memoryx/.venv/bin/uvicorn memoryx.api.rest_app:app --host 0.0.0.0 --port 8080
 Restart=on-failure
 RestartSec=5
 

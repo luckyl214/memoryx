@@ -133,14 +133,16 @@ class CLIHermesRunner:
     Falls back to common hermes installation paths.
     """
 
-    def __init__(self, hermes_path: str | None = None, timeout: float = 300.0) -> None:
+    def __init__(self, hermes_path=None, timeout=300.0, trace_store=None):
         import shutil
         self.hermes_path = (
             hermes_path
+            or os.environ.get("HERMES_PATH")
             or shutil.which("hermes")
             or "/home/lucky/.local/bin/hermes"
         )
         self.timeout = timeout
+        self.trace_store = trace_store
 
     async def __call__(
         self,
@@ -151,6 +153,16 @@ class CLIHermesRunner:
     ) -> str:
         """Run a single Hermes query via CLI."""
         import subprocess
+
+        # Record trace: hermes CLI started
+        if self.trace_store:
+            self.trace_store.record(
+                job_id=job.job_id,
+                trace_id=job.trace_id,
+                phase="hermes",
+                event_type="hermes_cli_start",
+                payload={"prompt_length": len(job.text or "")},
+            )
 
         if on_stage:
             await on_stage("hermes", "调用 Hermes CLI")
@@ -164,15 +176,38 @@ class CLIHermesRunner:
 
         prompt = job.text + attachment_hint
 
+        # Build CLI command — only pass provider/model if explicitly configured
+        # This avoids "Unknown provider" errors when Hermes CLI doesn't have
+        # the provider registered. Empty env vars = let Hermes use its defaults.
         cmd = [
             self.hermes_path,
             "chat",
             "-q", prompt,
             "--pass-session-id",
             "--source", f"feishu:{job.trace_id}",
-            "-m", "deepseek-v4-flash",
-            "--provider", "sensenova",
         ]
+
+        cli_provider = os.environ.get("HERMES_FEISHU_CLI_PROVIDER", "").strip()
+        cli_model = os.environ.get("HERMES_FEISHU_CLI_MODEL", "").strip()
+
+        if cli_provider:
+            cmd.extend(["--provider", cli_provider])
+        if cli_model:
+            cmd.extend(["-m", cli_model])
+
+        # Record trace: command built (no secrets)
+        if self.trace_store:
+            self.trace_store.record(
+                job_id=job.job_id,
+                trace_id=job.trace_id,
+                phase="hermes",
+                event_type="hermes_cli_command_built",
+                payload={
+                    "provider": cli_provider or "default",
+                    "model": cli_model or "default",
+                    "mode": "chat -q",
+                },
+            )
 
         await on_tool(ToolCallRecord(
             name="hermes_cli",
@@ -183,10 +218,15 @@ class CLIHermesRunner:
         ))
 
         try:
+            env = {
+                **os.environ,
+                "HERMES_HOME": os.environ.get("HERMES_HOME", "/home/lucky/.hermes"),
+            }
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
 
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -209,6 +249,16 @@ class CLIHermesRunner:
 
             if not stdout:
                 raise RuntimeError("Hermes CLI returned empty output")
+
+            # Record trace: hermes CLI done
+            if self.trace_store:
+                self.trace_store.record(
+                    job_id=job.job_id,
+                    trace_id=job.trace_id,
+                    phase="hermes",
+                    event_type="hermes_cli_done",
+                    payload={"answer_length": len(stdout)},
+                )
 
             # Stream output as deltas
             for i in range(0, len(stdout), 30):
@@ -248,7 +298,7 @@ class MissingHermesClient:
 
 # ── Factory ──
 
-def build_feishu_runner(*, real_runner: Any | None = None) -> Any:
+def build_feishu_runner(*, real_runner: Any | None = None, trace_store: Any = None) -> Any:
     """Build feishu runner based on FEISHU_RUNNER_MODE.
 
     Modes:
@@ -263,7 +313,7 @@ def build_feishu_runner(*, real_runner: Any | None = None) -> Any:
 
     # Build default real runner if none provided
     if real_runner is None:
-        real_runner = CLIHermesRunner()
+        real_runner = CLIHermesRunner(trace_store=trace_store)
 
     if mode == "shadow":
         return ShadowFeishuRunner(real_runner)

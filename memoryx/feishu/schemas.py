@@ -167,6 +167,8 @@ class FeishuRenderJob:
     locked_at: float | None = None
     created_at: float | None = None
     updated_at: float | None = None
+    started_at: float | None = None
+    ended_at: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
