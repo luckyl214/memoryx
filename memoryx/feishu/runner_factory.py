@@ -130,10 +130,16 @@ class CLIHermesRunner:
     """Calls Hermes CLI via subprocess for real processing.
 
     Uses `hermes chat -q "..." --pass-session-id` per request.
+    Falls back to common hermes installation paths.
     """
 
-    def __init__(self, hermes_path: str = "hermes", timeout: float = 300.0) -> None:
-        self.hermes_path = hermes_path
+    def __init__(self, hermes_path: str | None = None, timeout: float = 300.0) -> None:
+        import shutil
+        self.hermes_path = (
+            hermes_path
+            or shutil.which("hermes")
+            or "/home/lucky/.local/bin/hermes"
+        )
         self.timeout = timeout
 
     async def __call__(
