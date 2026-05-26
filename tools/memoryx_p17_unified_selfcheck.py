@@ -657,8 +657,15 @@ class SelfCheck:
         if not shutil.which("journalctl"):
             return
 
+        # 只检查最近 30 分钟的错误信号；更早的日志视为 stale，仅 WARN
+        stale_cutoff = time.time() - 1800  # 30 min
+        fresh_only = ["--since", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stale_cutoff))]
+
         for svc in ["memoryx-rest.service", "hermes-gateway.service"]:
-            proc = self.cmd(["journalctl", "-u", svc, "-n", "200", "--no-pager"], timeout=15)
+            proc = self.cmd(
+                ["journalctl", "-u", svc, "-n", "200", "--no-pager"] + fresh_only,
+                timeout=15,
+            )
             text = proc.stdout + proc.stderr
             if not text.strip():
                 self.warn("journal_empty_or_denied", f"{svc} journal 无输出或权限不足", service=svc)
@@ -671,9 +678,23 @@ class SelfCheck:
                     bad.append(line[-500:])
 
             if bad:
-                self.error("journal_errors_found", f"{svc} 最近日志有错误信号", service=svc, samples=bad[-10:])
+                self.error("journal_errors_found", f"{svc} 最近 30 分钟日志有错误信号", service=svc, samples=bad[-10:])
             else:
-                self.info("journal_clean", f"{svc} 最近日志无明显错误信号", service=svc)
+                # 再查一次不限制时间，检测是否只有旧日志问题
+                full_proc = self.cmd(
+                    ["journalctl", "-u", svc, "-n", "200", "--no-pager"],
+                    timeout=15,
+                )
+                full_text = full_proc.stdout + full_proc.stderr
+                old_bad = 0
+                for line in full_text.splitlines():
+                    lower = line.lower()
+                    if any(x in lower for x in ["traceback", "exception", "card_patch_failed", "unknown provider", "fatal"]):
+                        old_bad += 1
+                if old_bad:
+                    self.warn("journal_stale_errors", f"{svc} 有 {old_bad} 条旧日志错误信号（>30 分钟前），不影响当前运行", service=svc, stale_count=old_bad)
+                else:
+                    self.info("journal_clean", f"{svc} 最近日志无明显错误信号", service=svc)
 
     def report(self) -> int:
         counts = {"FATAL": 0, "ERROR": 0, "WARN": 0, "INFO": 0}
