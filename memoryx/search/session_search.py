@@ -66,16 +66,32 @@ class SessionSearchEngine:
 
     async def search(self, query: str) -> dict[str, Any]:
         started = time.perf_counter()
+        query_hash = self._query_hash(query)
         candidates = self._candidate_search(query, limit=self.max_sessions)
 
+        cache_hits = 0
+        fallback_count = 0
+        rate_limit_count = 0
+        timeout_count = 0
+
         if not candidates:
-            return {
+            result = {
                 "query": query,
                 "results": [],
                 "degraded": False,
                 "reason": "no_candidates",
                 "duration_ms": int((time.perf_counter() - started) * 1000),
+                "stats": {
+                    "candidate_count": 0,
+                    "llm_sessions": 0,
+                    "cache_hits": 0,
+                    "fallback_count": 0,
+                    "rate_limit_count": 0,
+                    "timeout_count": 0,
+                },
             }
+            self._record_event(query_hash, result["stats"], result["duration_ms"])
+            return result
 
         top_for_llm = candidates[: self.max_llm_sessions]
         rest = candidates[self.max_llm_sessions :]
@@ -90,8 +106,12 @@ class SessionSearchEngine:
                 )
             except asyncio.TimeoutError:
                 await self.limiter.on_timeout()
+                timeout_count = len(top_for_llm)
                 llm_results = [self._fallback_result(c, reason="total_timeout") for c in top_for_llm]
             except Exception as exc:
+                if self._is_rate_limit(exc):
+                    await self.limiter.on_rate_limit()
+                    rate_limit_count = len(top_for_llm)
                 llm_results = [self._fallback_result(c, reason=f"provider_error:{exc}") for c in top_for_llm]
         else:
             llm_results = [self._fallback_result(c, reason="llm_disabled") for c in top_for_llm]
@@ -104,13 +124,32 @@ class SessionSearchEngine:
             reverse=True,
         )
 
-        return {
+        # Count stats
+        cache_hits = sum(1 for r in results if r.source == "cache")
+        fallback_count = sum(1 for r in results if r.degraded)
+
+        duration_ms = int((time.perf_counter() - started) * 1000)
+
+        stats = {
+            "candidate_count": len(candidates),
+            "llm_sessions": len(top_for_llm),
+            "cache_hits": cache_hits,
+            "fallback_count": fallback_count,
+            "rate_limit_count": rate_limit_count,
+            "timeout_count": timeout_count,
+        }
+
+        result = {
             "query": query,
             "results": [r.__dict__ for r in results],
             "degraded": any(r.degraded for r in results),
             "limiter": await self.limiter.snapshot(),
-            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "duration_ms": duration_ms,
+            "stats": stats,
         }
+
+        self._record_event(query_hash, stats, duration_ms)
+        return result
 
     def _candidate_search(self, query: str, *, limit: int) -> list[SessionCandidate]:
         with self._connect() as conn:
@@ -255,3 +294,32 @@ class SessionSearchEngine:
     def _is_rate_limit(self, exc: Exception) -> bool:
         text = str(exc).lower()
         return "429" in text or "rate limit" in text or "too many requests" in text
+
+    def _record_event(self, query_hash: str, stats: dict, duration_ms: int) -> None:
+        """Record search event to session_search_events table for P17 monitoring."""
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO session_search_events(
+                        id, query_hash, candidate_count, llm_sessions, cache_hits,
+                        fallback_count, rate_limit_count, timeout_count, duration_ms,
+                        created_at, metadata_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?);
+                    """,
+                    (
+                        hashlib.sha256(f"{query_hash}:{time.time()}".encode()).hexdigest(),
+                        query_hash,
+                        stats["candidate_count"],
+                        stats["llm_sessions"],
+                        stats["cache_hits"],
+                        stats["fallback_count"],
+                        stats["rate_limit_count"],
+                        stats["timeout_count"],
+                        duration_ms,
+                        json.dumps({}),
+                    ),
+                )
+        except Exception:
+            pass  # Don't let event recording fail the search

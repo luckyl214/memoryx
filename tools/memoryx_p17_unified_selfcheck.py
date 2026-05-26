@@ -602,6 +602,44 @@ class SelfCheck:
                     self.info("p18_search_cache_ok", f"session_search_cache 有 {cached} 条", total=cached, expired=expired)
                 else:
                     self.warn("p18_search_cache_empty", "session_search_cache 为空（新部署正常）")
+
+            # Check session_search_events for recent activity
+            if "session_search_events" in tables:
+                recent = self.scalar(
+                    conn,
+                    "SELECT COUNT(*) FROM session_search_events WHERE created_at >= datetime('now','-1 hour');",
+                )
+                if recent > 0:
+                    total_llm = self.scalar(
+                        conn,
+                        "SELECT SUM(llm_sessions) FROM session_search_events WHERE created_at >= datetime('now','-1 hour');",
+                    )
+                    total_cache = self.scalar(
+                        conn,
+                        "SELECT SUM(cache_hits) FROM session_search_events WHERE created_at >= datetime('now','-1 hour');",
+                    )
+                    total_fallback = self.scalar(
+                        conn,
+                        "SELECT SUM(fallback_count) FROM session_search_events WHERE created_at >= datetime('now','-1 hour');",
+                    )
+                    total_timeout = self.scalar(
+                        conn,
+                        "SELECT SUM(timeout_count) FROM session_search_events WHERE created_at >= datetime('now','-1 hour');",
+                    )
+                    total_rate_limit = self.scalar(
+                        conn,
+                        "SELECT SUM(rate_limit_count) FROM session_search_events WHERE created_at >= datetime('now','-1 hour');",
+                    )
+                    avg_ms = self.scalar(
+                        conn,
+                        "SELECT AVG(duration_ms) FROM session_search_events WHERE created_at >= datetime('now','-1 hour');",
+                    )
+                    self.info("p18_search_events", f"1h 搜索 {recent} 次，LLM {total_llm or 0} 次，缓存命中 {total_cache or 0} 次，降级 {total_fallback or 0} 次，timeout {total_timeout or 0} 次，限频 {total_rate_limit or 0} 次，avg {avg_ms:.1f}ms" if avg_ms else "1h 搜索无数据",
+                             searches=recent, llm_calls=total_llm, cache_hits=total_cache,
+                             fallbacks=total_fallback, timeouts=total_timeout, rate_limits=total_rate_limit,
+                             avg_ms=avg_ms)
+                else:
+                    self.warn("p18_search_events_empty", "1h 内无搜索事件记录")
         finally:
             conn.close()
 
