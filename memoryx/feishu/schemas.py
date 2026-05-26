@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4
+import json
 
 
 # ── 内部运行状态（技术状态） ──
@@ -100,6 +101,10 @@ class AttachmentRef:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AttachmentRef":
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
 
 # ── ToolCallRecord 增强（时间线版） ──
 @dataclass(slots=True)
@@ -128,6 +133,10 @@ class ToolCallRecord:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ToolCallRecord":
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
 # ── FeishuRenderJob 增强（revision + visible_state） ──
@@ -175,18 +184,48 @@ class FeishuRenderJob:
     ended_at: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        d = asdict(self)
-        d["state"] = str(self.state)
-        d["visible_state"] = str(self.visible_state)
-        return d
+        """统一序列化 — 所有字段显式列出，确保 card_message_id 永远同步。"""
+        return {
+            "job_id": self.job_id,
+            "trace_id": self.trace_id,
+            "chat_id": self.chat_id,
+            "user_id": self.user_id,
+            "message_id": self.message_id,
+            "card_message_id": self.card_message_id,
+            "state": str(self.state),
+            "visible_state": str(self.visible_state),
+            "phase": self.phase,
+            "revision": self.revision,
+            "title": self.title,
+            "context_summary": self.context_summary,
+            "answer": self.answer,
+            "error": self.error,
+            "attachments": [a.to_dict() for a in self.attachments],
+            "tools": [t.to_dict() for t in self.tools],
+            "memoryx_badges": self.memoryx_badges,
+            "metadata": self.metadata,
+            "priority": self.priority,
+            "attempts": self.attempts,
+            "locked_at": self.locked_at,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "started_at": self.started_at,
+            "ended_at": self.ended_at,
+            "stream_preview": getattr(self, "stream_preview", ""),
+            "phase_marks": getattr(self, "phase_marks", []),
+        }
+
+    def to_json(self) -> str:
+        """统一 JSON 序列化 — 用于 payload_json 写入。"""
+        return json.dumps(self.to_dict(), ensure_ascii=False)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "FeishuRenderJob":
         data = dict(data)
         data["state"] = HermesRunState(data.get("state", HermesRunState.QUEUED))
         data["visible_state"] = VisibleState(data.get("visible_state", VisibleState.RECEIVED))
-        data["attachments"] = [AttachmentRef(**x) for x in data.get("attachments", [])]
-        data["tools"] = [ToolCallRecord(**x) for x in data.get("tools", [])]
+        data["attachments"] = [AttachmentRef.from_dict(x) if isinstance(x, dict) else x for x in data.get("attachments", [])]
+        data["tools"] = [ToolCallRecord.from_dict(x) if isinstance(x, dict) else x for x in data.get("tools", [])]
         return cls(**data)
 
     def update_visible_state(self, phase: str = "") -> None:

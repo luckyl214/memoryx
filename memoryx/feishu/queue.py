@@ -102,6 +102,23 @@ class FeishuSQLiteQueue:
             );
             """)
 
+    def record_card_message(
+        self,
+        job_id: str,
+        inbound_message_id: str | None,
+        outbound_card_message_id: str,
+        chat_id: str,
+        sender_identity: str = "app_bot",
+    ) -> None:
+        """记录卡片发送到 feishu_card_messages 表（P14.4.3 卡片所有权追踪）。"""
+        with self._connect() as conn:
+            conn.execute("""
+            INSERT OR REPLACE INTO feishu_card_messages(
+                job_id, inbound_message_id, outbound_card_message_id,
+                chat_id, sender_identity, card_schema, update_multi
+            ) VALUES (?, ?, ?, ?, ?, '2.0', 1);
+            """, (job_id, inbound_message_id, outbound_card_message_id, chat_id, sender_identity))
+
     def enqueue(self, job: FeishuRenderJob, *, priority: int = 100) -> str:
         """入队，同时双写 attachments"""
         now = time.time()
@@ -215,6 +232,9 @@ class FeishuSQLiteQueue:
             job.locked_at = now
             job.attempts = new_attempts
             job.revision = new_revision
+            # P14.4.3: 从 SQL row 同步 card_message_id（防止 payload_json 落后于 DB 列）
+            if row["card_message_id"]:
+                job.card_message_id = row["card_message_id"]
 
             # 将同步后的 payload 写回 DB
             synced_payload = json.dumps(job.to_dict(), ensure_ascii=False)
@@ -271,10 +291,74 @@ class FeishuSQLiteQueue:
                 job.phase,
                 job.revision,
                 job.card_message_id,
-                json.dumps(job.to_dict(), ensure_ascii=False),
+                job.to_json(),
                 now,
                 job.job_id,
             ))
+
+    def attach_card_message_id(self, job: FeishuRenderJob) -> FeishuRenderJob:
+        """强制同步 card_message_id：内存 job → DB 列 → payload_json → 所有权表。
+
+        P14.4.3 核心兜底方法。在以下场景确保 card_message_id 不变量：
+        - claim_next 重建的 job 可能落后
+        - callback 闭包捕获的是旧 job 对象
+        - patch/update_card 前需要最新 message_id
+        """
+        if getattr(job, "card_message_id", None):
+            return job
+
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    j.card_message_id AS col_card_message_id,
+                    c.outbound_card_message_id AS map_card_message_id,
+                    j.payload_json AS payload_json
+                FROM feishu_jobs j
+                LEFT JOIN feishu_card_messages c
+                  ON c.job_id = j.job_id
+                WHERE j.job_id = ?
+                LIMIT 1;
+                """,
+                (job.job_id,),
+            ).fetchone()
+
+        if not row:
+            return job
+
+        card_message_id = (
+            row["col_card_message_id"]
+            or row["map_card_message_id"]
+        )
+
+        if not card_message_id:
+            return job
+
+        # 回填内存 job
+        job.card_message_id = card_message_id
+
+        # 同步 payload_json 和 DB 列
+        try:
+            payload = job.to_dict()
+        except Exception:
+            payload = {}
+
+        payload["card_message_id"] = card_message_id
+        synced_json = json.dumps(payload, ensure_ascii=False)
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE feishu_jobs
+                SET card_message_id = ?,
+                    payload_json = ?,
+                    updated_at = strftime('%s','now')
+                WHERE job_id = ?;
+                """,
+                (card_message_id, synced_json, job.job_id),
+            )
+
+        return job
 
     def mark_done(self, job: FeishuRenderJob) -> None:
         """标记 job 完成。**强制要求 card_message_id 非空**，否则拒绝 done。"""

@@ -280,9 +280,10 @@ class FeishuCardRenderer:
         return {"tag": "div", "fields": fields}
 
     def _note(self, content: str) -> dict[str, Any]:
+        # V2: note tag 已废弃，改用 div + lark_md
         return {
-            "tag": "note",
-            "elements": [{"tag": "plain_text", "content": content[:300]}],
+            "tag": "div",
+            "text": {"tag": "lark_md", "content": content[:300]},
         }
 
     def _eid(self, title: str) -> str:

@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sqlite3
 import sys
@@ -37,7 +38,56 @@ def warn(msg: str) -> None:
     print("WARN:", msg)
 
 
-def main() -> int:
+def check_card_message_id_sync(conn: sqlite3.Connection, job_id: str) -> None:
+    """检查 card_message_id 在 feishu_jobs 列、payload_json、feishu_card_messages 三方一致。
+
+    P14.4.3 验收：出站 message_id 必须贯穿所有存储位置。
+    """
+    row = conn.execute(
+        """
+        SELECT
+            j.card_message_id AS col_card_message_id,
+            j.payload_json AS payload_json,
+            c.outbound_card_message_id AS map_card_message_id
+        FROM feishu_jobs j
+        LEFT JOIN feishu_card_messages c
+          ON c.job_id = j.job_id
+        WHERE j.job_id = ?
+        LIMIT 1;
+        """,
+        (job_id,),
+    ).fetchone()
+
+    if not row:
+        fail("latest job not found for card sync check")
+
+    col_id: str | None = row["col_card_message_id"]
+    map_id: str | None = row["map_card_message_id"]
+
+    try:
+        payload: dict = json.loads(row["payload_json"] or "{}")
+    except Exception:
+        payload = {}
+
+    payload_id = payload.get("card_message_id")
+
+    if not col_id:
+        fail("feishu_jobs.card_message_id column is empty")
+
+    if not payload_id:
+        fail("payload_json.card_message_id is empty")
+
+    if not map_id:
+        fail("feishu_card_messages.outbound_card_message_id is empty")
+
+    if len({col_id, payload_id, map_id}) != 1:
+        fail(
+            f"card_message_id mismatch: "
+            f"column={col_id}, payload_json={payload_id}, ownership_table={map_id}"
+        )
+
+    ok("card_message_id synchronized across column, payload_json and ownership table")
+
     parser = argparse.ArgumentParser(
         description="P14.4.3 Feishu Card Ownership Gate"
     )
@@ -147,7 +197,10 @@ def main() -> int:
 
     ok("card ownership mapping OK")
 
-    # 5. 检查 card_message_id 列在 feishu_jobs 中
+    # 5. 检查 card_message_id 三方一致：列、payload_json、所有权表
+    check_card_message_id_sync(conn, latest["job_id"])
+
+    # 6. 检查 card_message_id 列在 feishu_jobs 中
     cols = [c[1] for c in conn.execute("PRAGMA table_info(feishu_jobs)").fetchall()]
     if "card_message_id" not in cols:
         fail("card_message_id column missing from feishu_jobs")

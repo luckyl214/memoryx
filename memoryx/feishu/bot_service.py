@@ -10,6 +10,7 @@ P14.4.3 集成：
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -77,11 +78,10 @@ class FeishuHermesBotService:
         self.coalescer = coalescer or CardUpdateCoalescer(min_interval=update_interval_seconds)
 
     async def accept_event(self, job: FeishuRenderJob) -> str:
-        """接受飞书事件，发送初始交互式卡片并捕获 message_id。"""
+        """接受飞书事件，先发卡片（捕获 card_message_id），确认卡片所有权后再入队。"""
         job.update_visible_state("received")
-        self.queue.enqueue(job)
 
-        # 记录追踪
+        # 记录追踪：事件已接受
         if self.trace_store:
             self.trace_store.record(
                 job_id=job.job_id,
@@ -91,7 +91,8 @@ class FeishuHermesBotService:
                 payload={"chat_id": job.chat_id, "message_id": job.message_id},
             )
 
-        # P14.4.3: 使用 send_interactive_card 发送卡片，捕获 message_id
+        # P14.4.3: 先发卡片，拿到 card_message_id 再入队
+        # 防止 claim_next 并发读取 payload_json 时 card_message_id=null
         card = self.renderer.render(job, final_view=False)
 
         try:
@@ -100,7 +101,17 @@ class FeishuHermesBotService:
                 card=card,
             )
             job.card_message_id = result["message_id"]
-            self.queue.update(job)
+
+            # 卡片所有权断言
+            assert job.card_message_id, "send_interactive_card returned empty message_id"
+
+            # 记录卡片发送到 feishu_card_messages 表
+            self.queue.record_card_message(
+                job_id=job.job_id,
+                inbound_message_id=job.message_id,
+                outbound_card_message_id=job.card_message_id,
+                chat_id=job.chat_id,
+            )
 
             # 追踪：卡片发送成功
             if self.trace_store:
@@ -112,7 +123,7 @@ class FeishuHermesBotService:
                     payload={"card_message_id": job.card_message_id, "revision": job.revision},
                 )
         except Exception as exc:
-            # 卡片发送失败不阻断入队，但记录错误
+            # 卡片发送失败：不入队，HTTP handler 返回 500
             if self.trace_store:
                 self.trace_store.record(
                     job_id=job.job_id,
@@ -122,6 +133,10 @@ class FeishuHermesBotService:
                     payload={"error": str(exc)},
                 )
             raise
+
+        # P14.4.3: 卡片已发送 → card_message_id 已就位 → 入队
+        # 此时 claim_next 读取的 payload_json 已包含 card_message_id
+        self.queue.enqueue(job)
 
         return job.job_id
 
@@ -150,6 +165,9 @@ class FeishuHermesBotService:
                 event_type="job_claimed",
             )
 
+        # P14.4.3: 启动时兜底同步 card_message_id（防止 payload_json 落后）
+        job = self.queue.attach_card_message_id(job)
+
         # P14.2: 下载附件（如果有）
         job.attachments = await self.queue.download_attachments(job, self.client)
         self.queue.update(job)
@@ -170,11 +188,16 @@ class FeishuHermesBotService:
                         payload={"name": prepared.name, "status": prepared.status},
                     )
 
+        # P14.4.3: 使用 job_holder 闭包确保 callback 永远拿到最新 job
+        job_holder = {"job": job}
+
         async def on_delta(delta: str) -> None:
-            job.answer += delta
+            current = job_holder["job"]
+            current.answer += delta
 
         async def on_tool(tool: ToolCallRecord) -> None:
-            job.tools.append(tool)
+            current = job_holder["job"]
+            current.tools.append(tool)
 
         try:
             # 追踪：runner 开始
@@ -187,12 +210,22 @@ class FeishuHermesBotService:
                     payload={"runner_type": type(runner).__name__},
                 )
 
+            # P14.4.3: shadow runner 60s 超时，超时后生成 degraded final_view
+            # 飞书事件侧要求 3 秒内 ACK，耗时操作异步处理；卡片更新也应保持"先给出状态再处理"
+            shadow_timeout = float(os.getenv("FEISHU_SHADOW_RUNNER_TIMEOUT", "60"))
+
             # 使用真实 Hermes Runner
             if isinstance(runner, RealHermesRunner):
-                final_answer = await runner.run(job, on_delta, on_tool, on_stage)
+                final_answer = await asyncio.wait_for(
+                    runner.run(job, on_delta, on_tool, on_stage),
+                    timeout=shadow_timeout,
+                )
             else:
                 # 兼容旧式 runner
-                final_answer = await runner(job, on_delta, on_tool)
+                final_answer = await asyncio.wait_for(
+                    runner(job, on_delta, on_tool),
+                    timeout=shadow_timeout,
+                )
 
             if final_answer:
                 job.answer = final_answer
@@ -291,6 +324,43 @@ class FeishuHermesBotService:
                     },
                 )
 
+        except asyncio.TimeoutError:
+            # P14.4.3: shadow runner 超时 → degraded final_view
+            job.error = f"Shadow runner timed out after {shadow_timeout}s"
+            job.state = HermesRunState.ERROR
+            job.visible_state = VisibleState.DEGRADED
+            job.phase = "timeout"
+            job.ended_at = job.ended_at or time.time()
+            job.updated_at = time.time()
+
+            if self.trace_store:
+                self.trace_store.record(
+                    job_id=job.job_id,
+                    trace_id=job.trace_id,
+                    phase="timeout",
+                    event_type="shadow_runner_timeout",
+                    payload={"timeout_seconds": shadow_timeout},
+                )
+
+            # 即使超时也要更新卡片
+            try:
+                await self._update_card(job, final_view=True)
+            except Exception:
+                pass
+
+            if job.card_message_id:
+                self.queue.update(job)
+                if self.trace_store:
+                    self.trace_store.record(
+                        job_id=job.job_id,
+                        trace_id=job.trace_id,
+                        phase="done",
+                        event_type="job_done_degraded",
+                        payload={"card_message_id": job.card_message_id, "reason": "timeout"},
+                    )
+            else:
+                self._move_to_dlq(job, "shadow_runner_timeout_no_card")
+
         except Exception as exc:
             job.error = str(exc)
 
@@ -331,41 +401,59 @@ class FeishuHermesBotService:
                         payload={"error": str(exc)[:1000]},
                     )
 
-                with self.queue._connect() as conn:
-                    conn.execute(
-                        """
-                        INSERT OR REPLACE INTO feishu_dead_letters(
-                            job_id, payload_json, reason, attempts, last_error, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?);
-                        """,
-                        (
-                            job.job_id,
-                            json.dumps(job.to_dict(), ensure_ascii=False),
-                            "card_message_id_empty_on_error",
-                            job.attempts,
-                            str(exc),
-                            time.time(),
-                        ),
-                    )
-                    conn.execute("DELETE FROM feishu_jobs WHERE job_id=?;", (job.job_id,))
+                self._move_to_dlq(job, "card_message_id_empty_on_error")
 
         finally:
             self.queue.release_lock(job.job_id)
 
         return True
 
+    def _move_to_dlq(self, job: FeishuRenderJob, reason: str) -> None:
+        """将 job 移入死信队列（DLQ）"""
+        with self.queue._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO feishu_dead_letters(
+                    job_id, payload_json, reason, attempts, last_error, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    job.job_id,
+                    job.to_json(),
+                    reason,
+                    job.attempts,
+                    job.error[:1000] if job.error else "",
+                    time.time(),
+                ),
+            )
+            conn.execute("DELETE FROM feishu_jobs WHERE job_id=?;", (job.job_id,))
+
     async def _update_card(self, job: FeishuRenderJob, *, final_view: bool = False) -> None:
-        """更新飞书卡片（P14.4.3: 使用 patch_interactive_card，强制 card_message_id）。"""
+        """更新飞书卡片（P14.4.3 硬化版）。
+
+        P14.4.3 强制校验：
+        1. 每次 card patch 前必须 attach_card_message_id 兜底
+        2. card_message_id 为空时 raise RuntimeError（不再 silent skip）
+        """
+        # P14.4.3 不变量：patch 前强制同步 card_message_id
+        job = self.queue.attach_card_message_id(job)
+
         if not job.card_message_id:
             if self.trace_store:
                 self.trace_store.record(
                     job_id=job.job_id,
                     trace_id=job.trace_id,
                     phase="card_update",
-                    event_type="card_patch_skipped",
-                    payload={"reason": "card_message_id is empty"},
+                    event_type="card_patch_refused",
+                    payload={
+                        "reason": "missing_card_message_id_after_reload",
+                        "revision": job.revision,
+                    },
                 )
-            return
+            raise RuntimeError(
+                f"cannot patch Feishu card: job={job.job_id} has empty card_message_id "
+                f"even after attach_card_message_id reload"
+            )
 
         card = self.renderer.render(job, final_view=final_view)
 

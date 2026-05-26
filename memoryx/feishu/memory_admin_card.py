@@ -207,10 +207,8 @@ def build_card(stats: dict, recent: list[dict], lancedb: dict | None) -> dict[st
 
     # ── 底部标注 ──
     elements.append({
-        "tag": "note",
-        "elements": [
-            {"tag": "plain_text", "content": f"MemoryX v1.1.0 · LanceDB {lancedb.get('vector_count', 0) if lancedb else 0} 条向量 · {now}"},
-        ],
+        "tag": "div",
+        "text": {"tag": "lark_md", "content": f"MemoryX v1.1.0 · LanceDB {lancedb.get('vector_count', 0) if lancedb else 0} 条向量 · {now}"},
     })
 
     return {

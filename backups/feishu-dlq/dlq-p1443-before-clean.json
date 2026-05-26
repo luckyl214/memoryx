@@ -1,0 +1,10 @@
+[
+  {
+    "job_id": "b316572f44f8451e912be4fe90ad95e8",
+    "payload_json": "{\"chat_id\": \"oc_61a38f265bb24b9df24b2d6791e72fe6\", \"user_id\": null, \"message_id\": \"om_p1443smoke_1779774328\", \"text\": \"P14.4.3 smoke：验证 MemoryX 飞书输出\", \"receive_id_type\": \"chat_id\", \"job_id\": \"b316572f44f8451e912be4fe90ad95e8\", \"trace_id\": \"evt_p1443smo\", \"state\": \"running\", \"visible_state\": \"thinking\", \"phase\": \"prepare\", \"revision\": 2, \"title\": \"Hermes · MemoryX\", \"context_summary\": \"\", \"answer\": \"\", \"error\": \"Hermes shadow runner timed out after 300s\", \"attachments\": [], \"tools\": [{\"id\": \"3cf62d22\", \"name\": \"feishu_shadow_runner\", \"phase\": \"system\", \"status\": \"running\", \"user_visible_name\": \"feishu_shadow_runner\", \"summary\": \"正在 shadow 模式验证真 Hermes runner。\", \"started_at\": null, \"finished_at\": null, \"duration_ms\": null, \"input_preview\": \"\", \"output_preview\": \"\", \"guard_decision\": null, \"severity\": \"info\", \"collapsible\": true}, {\"id\": \"598eaf70\", \"name\": \"feishu_shadow_runner\", \"phase\": \"system\", \"status\": \"error\", \"user_visible_name\": \"feishu_shadow_runner\", \"summary\": \"真 Hermes runner shadow 超时（300s）。\", \"started_at\": null, \"finished_at\": null, \"duration_ms\": null, \"input_preview\": \"\", \"output_preview\": \"\", \"guard_decision\": null, \"severity\": \"info\", \"collapsible\": true}], \"memoryx_badges\": [\"MemoryX ✅\", \"Semantic ✅\", \"P13 ✅\"], \"card_message_id\": null, \"metadata\": {}, \"priority\": 100, \"attempts\": 1, \"locked_at\": 1779774328.9693246, \"created_at\": null, \"updated_at\": null, \"started_at\": null, \"ended_at\": null, \"stream_preview\": \"\", \"phase_marks\": []}",
+    "reason": "card_message_id_empty_on_error",
+    "attempts": 1,
+    "last_error": "Hermes shadow runner timed out after 300s",
+    "created_at": 1779774628.9898517
+  }
+]
