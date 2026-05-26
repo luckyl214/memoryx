@@ -48,11 +48,13 @@ STATE_META = {
     },
 }
 
-# P14.3: 可见状态映射
+# P14.4.3: 可见状态映射（8 类明确状态 + 视觉层级）
 VISIBLE_STATE_META = {
-    "received":    {"emoji": "📥", "label": "已收到",    "color": "grey"},
-    "queued":      {"emoji": "⏳", "label": "排队中",    "color": "grey"},
+    "received":    {"emoji": "📥", "label": "已收到",    "color": "blue"},
+    "queued":      {"emoji": "⏳", "label": "排队中",    "color": "blue"},
     "thinking":    {"emoji": "🧠", "label": "正在处理",  "color": "blue"},
+    "generating":  {"emoji": "✍️", "label": "生成中",    "color": "blue"},
+    "verifying":   {"emoji": "🛡️", "label": "校验中",    "color": "yellow"},
     "using_tools": {"emoji": "🛠️", "label": "调用工具中", "color": "blue"},
     "waiting_user":{"emoji": "🟡", "label": "等待确认",  "color": "yellow"},
     "writing":     {"emoji": "✍️", "label": "整理答案中", "color": "blue"},
@@ -156,11 +158,26 @@ class FeishuCardRenderer:
     def _final_elements(self, job: FeishuRenderJob) -> list[dict[str, Any]]:
         """最终视图元素：只显示结果、耗时、执行摘要。"""
         answer = (getattr(job, "answer", "") or "").strip() or "已完成，但没有生成可展示文本。"
-        return [
+
+        elements = [
             self.md("最终结果", answer[:6000]),
             self.md("耗时", self._duration(job)),
             self.md("执行摘要", "MemoryX context → Hermes generate → guard → done"),
         ]
+
+        # 如果有图片，整理后输出简洁摘要
+        attachments = getattr(job, "attachments", None) or []
+        images = [a for a in attachments if a.kind == "image"]
+        files = [a for a in attachments if a.kind == "file"]
+        if images or files:
+            parts = []
+            if images:
+                parts.append(f"包含 {len(images)} 张图片，已用于分析")
+            if files:
+                parts.append(f"{len(files)} 个文件已保存")
+            elements.append(self.md("附件摘要", "；".join(parts)))
+
+        return elements
 
     def _input_summary(self, job: FeishuRenderJob) -> str:
         attachments = getattr(job, "attachments", None) or []
@@ -280,8 +297,11 @@ class FeishuCardRenderer:
             "最终结果": "result",
             "耗时": "duration",
             "执行摘要": "summary",
+            "附件摘要": "attachments-summary",
             "图片": "images",
             "文件": "files",
+            "下一步": "next-steps",
+            "系统诊断": "diagnosis",
         }
         return mapping.get(title, "block")
 

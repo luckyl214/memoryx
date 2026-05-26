@@ -20,6 +20,8 @@ class VisibleState(StrEnum):
     RECEIVED = "received"
     QUEUED = "queued"
     THINKING = "thinking"
+    GENERATING = "generating"
+    VERIFYING = "verifying"
     USING_TOOLS = "using_tools"
     WAITING_USER = "waiting_user"
     WRITING = "writing"
@@ -29,9 +31,11 @@ class VisibleState(StrEnum):
 
 
 STATE_VIEW = {
-    VisibleState.RECEIVED: ("📥", "已收到", "grey"),
-    VisibleState.QUEUED: ("⏳", "排队中", "grey"),
-    VisibleState.THINKING: ("🧠", "思考中", "blue"),
+    VisibleState.RECEIVED: ("📥", "已收到", "blue"),
+    VisibleState.QUEUED: ("⏳", "排队中", "blue"),
+    VisibleState.THINKING: ("🧠", "正在处理", "blue"),
+    VisibleState.GENERATING: ("✍️", "生成中", "blue"),
+    VisibleState.VERIFYING: ("🛡️", "校验中", "yellow"),
     VisibleState.USING_TOOLS: ("🛠️", "调用工具中", "blue"),
     VisibleState.WAITING_USER: ("🟡", "等待确认", "yellow"),
     VisibleState.WRITING: ("✍️", "整理答案中", "blue"),
@@ -56,11 +60,11 @@ def get_visible_state(internal_state: HermesRunState, phase: str = "") -> Visibl
             "prepare": VisibleState.THINKING,
             "context": VisibleState.THINKING,
             "retrieval": VisibleState.THINKING,
-            "generate": VisibleState.THINKING,
+            "generate": VisibleState.GENERATING,
             "tool": VisibleState.USING_TOOLS,
             "guard": VisibleState.THINKING,
-            "verify": VisibleState.WRITING,
-            "reflect": VisibleState.WRITING,
+            "verify": VisibleState.VERIFYING,
+            "reflect": VisibleState.VERIFYING,
             "write": VisibleState.WRITING,
         }
         return phase_to_visible.get(phase, VisibleState.THINKING)
@@ -195,3 +199,6 @@ class FeishuRenderJob:
         """获取下一个 revision"""
         self.revision += 1
         return self.revision
+
+    stream_preview: str = ""
+    phase_marks: list[str] = field(default_factory=list)
