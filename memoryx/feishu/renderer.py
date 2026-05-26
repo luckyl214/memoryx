@@ -10,7 +10,7 @@ P14.4.3 硬化：
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from .schemas import AttachmentRef, FeishuRenderJob, HermesRunState, ToolCallRecord
@@ -18,7 +18,7 @@ from .stream_sanitizer import StreamSanitizer
 from .render_text import attachment_status_text
 
 
-CST = timezone.utc  # 使用 UTC 避免时区歧义
+CST = timezone(timedelta(hours=8))  # Asia/Shanghai 北京时间
 
 
 STATE_META = {
@@ -66,8 +66,8 @@ VISIBLE_STATE_META = {
 
 def format_cst(ts: float | None) -> str:
     if ts:
-        return datetime.fromtimestamp(float(ts), CST).strftime("%Y-%m-%d %H:%M:%S UTC")
-    return datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S UTC")
+        return datetime.fromtimestamp(float(ts), CST).strftime("%Y-%m-%d %H:%M:%S CST")
+    return datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S CST")
 
 
 class FeishuCardRenderer:
@@ -93,11 +93,16 @@ class FeishuCardRenderer:
         # 确保元素不超过 200（飞书限制）
         elements: list[dict[str, Any]] = []
 
-        # 头部信息（精简版，无阶段信息）
+        # 头部信息（动态更新：状态、任务摘要、trace）
+        task_summary = job.text.strip()[:50] if job.text.strip() else (job.title or "Hermes · MemoryX")
+        trace_info = f"rev {job.revision} · {job.phase or '—'}"
+        if job.trace_id:
+            trace_info = f"{job.trace_id[:12]} · {trace_info}"
+
         elements.append(self._kv_strip([
             ("状态", f"{vs_meta['emoji']} {vs_meta['label']}"),
-            ("任务", job.title or "Hermes · MemoryX"),
-            ("Trace", job.trace_id or job.job_id[:10]),
+            ("任务", task_summary),
+            ("Trace", trace_info),
         ]))
 
         # MemoryX 状态徽章
@@ -141,12 +146,13 @@ class FeishuCardRenderer:
         }
 
     def _live_elements(self, job: FeishuRenderJob) -> list[dict[str, Any]]:
-        """运行态视图元素：显示进度、阶段、实时摘要。"""
+        """运行态视图元素：显示进度、阶段、实时摘要、动态耗时。"""
         elements = [
             self.md("输入", self._input_summary(job)),
             self.md("当前阶段", self._phase_text(job)),
             self.md("执行进度", self._progress_text(job)),
             self.md("实时摘要", self._safe_preview(job)),
+            self.md("耗时", self._duration(job)),
         ]
 
         # 附件信息（如果有）
@@ -201,7 +207,7 @@ class FeishuCardRenderer:
     def _progress_text(self, job: FeishuRenderJob) -> str:
         marks = getattr(job, "phase_marks", None) or []
         if not marks:
-            return "MemoryX ✅ · Semantic ✅ · P13 ✅"
+            return f"start → {job.phase or '—'}"
         return " → ".join(marks[-6:])
 
     def _safe_preview(self, job: FeishuRenderJob) -> str:

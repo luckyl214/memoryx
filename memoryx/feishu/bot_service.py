@@ -191,6 +191,22 @@ class FeishuHermesBotService:
         # P14.4.3: 使用 job_holder 闭包确保 callback 永远拿到最新 job
         job_holder = {"job": job}
 
+        # P14.4.3: on_stage — 阶段变化时动态更新卡片
+        async def _on_stage(stage: RunnerStage, stage_label: str) -> None:
+            current = job_holder["job"]
+            current.update_visible_state(stage.value)
+            self.queue.update(current)
+            if self.trace_store:
+                self.trace_store.record(
+                    job_id=current.job_id,
+                    trace_id=current.trace_id,
+                    phase=stage.value,
+                    event_type="state_transition",
+                    payload={"stage": stage.value, "revision": current.revision},
+                )
+            # 每次阶段变化更新卡片（不在 live_view 时跳过）
+            await self._update_card(current, final_view=False)
+
         async def on_delta(delta: str) -> None:
             current = job_holder["job"]
             current.answer += delta
@@ -214,16 +230,16 @@ class FeishuHermesBotService:
             # 飞书事件侧要求 3 秒内 ACK，耗时操作异步处理；卡片更新也应保持"先给出状态再处理"
             shadow_timeout = float(os.getenv("FEISHU_SHADOW_RUNNER_TIMEOUT", "60"))
 
-            # 使用真实 Hermes Runner
+            # P14.4.3: 使用 on_stage 回调让阶段变化更新卡片
             if isinstance(runner, RealHermesRunner):
                 final_answer = await asyncio.wait_for(
-                    runner.run(job, on_delta, on_tool, on_stage),
+                    runner.run(job_holder["job"], on_delta, on_tool, _on_stage),
                     timeout=shadow_timeout,
                 )
             else:
                 # 兼容旧式 runner
                 final_answer = await asyncio.wait_for(
-                    runner(job, on_delta, on_tool),
+                    runner(job_holder["job"], on_delta, on_tool),
                     timeout=shadow_timeout,
                 )
 
