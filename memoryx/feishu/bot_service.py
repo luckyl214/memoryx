@@ -237,11 +237,18 @@ class FeishuHermesBotService:
                     timeout=shadow_timeout,
                 )
             else:
-                # 兼容旧式 runner
-                final_answer = await asyncio.wait_for(
-                    runner(job_holder["job"], on_delta, on_tool),
-                    timeout=shadow_timeout,
-                )
+                # 旧式 runner / shadow runner: 也传 on_stage 和 on_delta
+                try:
+                    final_answer = await asyncio.wait_for(
+                        runner(job_holder["job"], on_delta, on_tool, _on_stage),
+                        timeout=shadow_timeout,
+                    )
+                except TypeError:
+                    # 极旧式 runner 不接收 on_stage
+                    final_answer = await asyncio.wait_for(
+                        runner(job_holder["job"], on_delta, on_tool),
+                        timeout=shadow_timeout,
+                    )
 
             if final_answer:
                 job.answer = final_answer

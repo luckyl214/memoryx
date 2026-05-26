@@ -95,15 +95,11 @@ class ShadowFeishuRunner:
                 output_preview=answer[:500],
             ))
 
-            # Show safe output (same as echo)
-            text = (
-                "飞书入口已接通 ✅\n\n"
-                "真 Hermes runner 已在 shadow 模式跑通，但本条消息仍为安全输出。\n"
-                "下一步可将 FEISHU_RUNNER_MODE 切到 real。"
-            )
-            for i in range(0, len(text), 30):
-                await on_delta(text[i:i+30])
-            return text
+            # P14.4.3: 输出真实答案到卡片，不再返回占位符
+            # shadow 模式已跑通真 Hermes，可以安全展示结果
+            for i in range(0, len(answer), 30):
+                await on_delta(answer[i:i+30])
+            return answer
 
         except TimeoutError:
             await on_tool(ToolCallRecord(
