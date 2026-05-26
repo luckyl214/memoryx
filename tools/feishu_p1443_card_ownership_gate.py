@@ -88,8 +88,11 @@ def check_card_message_id_sync(conn: sqlite3.Connection, job_id: str) -> None:
 
     ok("card_message_id synchronized across column, payload_json and ownership table")
 
+
+def main() -> int:
+    """P14.4.3 Feishu Card Ownership Gate — 主函数"""
     parser = argparse.ArgumentParser(
-        description="P14.4.3 Feishu Card Ownership Gate"
+        description="P14.4.3 Feishu Card Ownership Gate",
     )
     parser.add_argument(
         "--allow-empty",
