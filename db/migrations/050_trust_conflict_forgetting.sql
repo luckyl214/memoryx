@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS memory_conflicts (
     memory_a_id TEXT NOT NULL,
     memory_b_id TEXT NOT NULL,
     conflict_type TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',
+    resolved_state TEXT NOT NULL DEFAULT 'open',
     confidence REAL NOT NULL DEFAULT 0.5,
     summary TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS memory_conflicts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_memory_conflicts_status
-ON memory_conflicts(status, created_at);
+ON memory_conflicts(resolved_state, created_at);
 
 -- ── memory_forgetting_events: audit trail for archiving and decay ──
 CREATE TABLE IF NOT EXISTS memory_forgetting_events (
