@@ -20,10 +20,15 @@ MEMORY_TYPES = {
 }
 
 
-@dataclass(slots=True)
+@dataclass(init=False)
 class MemoryRecord:
-    """P0 schema: memories.id PK, not memory_id."""
-    id: str = field(default_factory=lambda: uuid4().hex)
+    """P0 schema: memories.id PK, not memory_id.
+
+    Legacy/public alias: ``memory_id`` is accepted in constructor and
+    exposed as a read-only property returning ``self.id``.
+    When both ``id`` and ``memory_id`` are supplied, ``id`` wins.
+    """
+    id: str
     session_id: str | None = None
     memory_type: str = "FACT"
     content: str = ""
@@ -44,6 +49,72 @@ class MemoryRecord:
     valid_to: str | None = None
     archived_at: str | None = None
     metadata_json: str = "{}"
+
+    def __init__(
+        self,
+        id: str | None = None,
+        memory_id: str | None = None,
+        session_id: str | None = None,
+        memory_type: str = "FACT",
+        content: str = "",
+        content_summary: str | None = None,
+        content_hash: str = "",
+        checksum: str = "",
+        importance_score: float = 0.0,
+        confidence_score: float = 0.0,
+        decay_score: float = 0.0,
+        recency_score: float = 0.0,
+        access_count: int = 0,
+        reinforcement_score: float = 0.0,
+        safety_score: float = 1.0,
+        active_state: str = "active",
+        superseded_by: str | None = None,
+        contradiction_group_id: str | None = None,
+        valid_from: str = "",
+        valid_to: str | None = None,
+        archived_at: str | None = None,
+        metadata_json: str = "{}",
+        scope: str = "global",
+        tags_json: str = "[]",
+        entities_json: str = "[]",
+        source_message_id: str | None = None,
+    ) -> None:
+        # id wins over memory_id; memory_id is legacy alias
+        if id is None and memory_id is not None:
+            id = memory_id
+        if id is None:
+            id = uuid4().hex
+        self.id = id
+        self.session_id = session_id
+        self.memory_type = memory_type
+        self.content = content
+        self.content_summary = content_summary
+        self.content_hash = content_hash
+        self.checksum = checksum
+        self.importance_score = importance_score
+        self.confidence_score = confidence_score
+        self.decay_score = decay_score
+        self.recency_score = recency_score
+        self.access_count = access_count
+        self.reinforcement_score = reinforcement_score
+        self.safety_score = safety_score
+        self.active_state = active_state
+        self.superseded_by = superseded_by
+        self.contradiction_group_id = contradiction_group_id
+        self.valid_from = valid_from
+        self.valid_to = valid_to
+        self.archived_at = archived_at
+        self.metadata_json = metadata_json
+        self.scope = scope
+        self.tags_json = tags_json
+        self.entities_json = entities_json
+        self.source_message_id = source_message_id
+
+    @property
+    def memory_id(self) -> str:
+        """Legacy public alias — always returns self.id."""
+        return self.id
+
 
 
 class MemoryRepository:
@@ -204,7 +275,16 @@ class MemoryRepository:
         await self.db.execute("INSERT INTO memory_conflicts(id,memory_id,conflicting_memory_id,contradiction_reason,checksum,resolved_state,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?);",
             (uuid4().hex,memory_id,conflicting_memory_id,reason,self.checksum(f"{memory_id}:{conflicting_memory_id}:{reason}"),"open",now,"{}"))
 
-    async def add_entity(self, name: str, entity_type: str="unknown", metadata_json: str="{}") -> str:
+    async def add_entity(
+        self,
+        name: str | None = None,
+        entity_name: str | None = None,
+        entity_type: str = "unknown",
+        metadata_json: str = "{}",
+    ) -> str:
+        # backward-compatible alias
+        if name is None:
+            name = entity_name or ""
         eid = uuid4().hex; now = self._now_iso(); nn = name.lower().strip()
         await self.db.execute("INSERT INTO entities(id,name,entity_type,normalized_name,active_state,checksum,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?);",
             (eid,name,entity_type,nn,"active",self.checksum(f"{nn}:{entity_type}"),now,metadata_json))
@@ -221,7 +301,18 @@ class MemoryRepository:
         await self.db.execute("INSERT INTO session_summaries(id,session_id,summary,content_hash,checksum,valid_from,active_state,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?,?);",
             (uuid4().hex,session_id,summary,ch,ch,now,"active",now,"{}"))
 
-    async def add_episodic_memory(self, memory_id: str, session_id: str|None=None, content: str="", summary: str|None=None, importance_score: float=0.5) -> str:
+    async def add_episodic_memory(
+        self,
+        memory_id: str | None = None,
+        session_id: str | None = None,
+        content: str = "",
+        title: str | None = None,
+        summary: str | None = None,
+        importance_score: float = 0.5,
+    ) -> str:
+        # backward-compatible alias: title → content
+        if title is not None and not content:
+            content = title
         eid = uuid4().hex; now = self._now_iso(); ch = self.checksum(content)
         await self.db.execute("INSERT INTO episodic_memories(id,memory_id,session_id,content,summary,importance_score,valid_from,active_state,checksum,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?,?);",
             (eid,memory_id,session_id,content,summary,importance_score,now,"active",ch,now,"{}"))
@@ -307,3 +398,4 @@ class MemoryRepository:
             )
 
         return memory_id
+
