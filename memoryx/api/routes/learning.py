@@ -150,7 +150,7 @@ async def distill_recent(since_hours: int = 24):
 
 class ApproveDraftRequest(BaseModel):
     draft_id: str
-    hermes_skill_dir: str = "/home/lucky/.hermes/skills"
+    hermes_skill_dir: str = os.getenv("HERMES_SKILL_DIR", os.path.expanduser("~/.hermes/skills"))
 
 
 @distill_router.post("/draft/approve")
