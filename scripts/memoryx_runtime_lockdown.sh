@@ -917,7 +917,7 @@ EOF
 main() {
   local cmd="${1:-}"
   local initial_dir
-  initial_dir="$(pwd)"
+  initial_dir="$(repo_root_or_die)"
 
   case "$cmd" in
     all)
