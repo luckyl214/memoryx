@@ -1,0 +1,21 @@
+# MemoryX CODEOWNERS
+# Enable "Require review from Code Owners" in GitHub branch protection.
+
+* @luckyl214
+
+memoryx/storage/ @luckyl214
+memoryx/guards/ @luckyl214
+memoryx/hooks/ @luckyl214
+memoryx/hermes_bridge.py @luckyl214
+memoryx/plugin.py @luckyl214
+memoryx/api/ @luckyl214
+memoryx/mcp_server.py @luckyl214
+
+db/schema.sql @luckyl214
+db/migrations/ @luckyl214
+
+pyproject.toml @luckyl214
+VERSION @luckyl214
+scripts/run_memoryx_release_gate.py @luckyl214
+scripts/ @luckyl214
+.github/ @luckyl214

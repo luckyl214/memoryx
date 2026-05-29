@@ -1,0 +1,7 @@
+# Keep Hermes pinned to MemoryX stable unless explicitly testing a patch.
+# Use:
+#   pip install -r requirements-hermes.txt -c constraints-memoryx-stable.txt
+#
+# Do not change this to a branch name or local path.
+
+memoryx @ git+https://github.com/luckyl214/memoryx.git@v2.0.0
