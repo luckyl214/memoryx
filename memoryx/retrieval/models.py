@@ -30,3 +30,6 @@ class RetrievalResult:
     episodic_score: float
     final_score: float
     explanation: str
+    source_type: str = "unknown"
+    verification_status: str = "unverified"
+    trust_score: float = 0.5

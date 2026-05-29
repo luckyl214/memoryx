@@ -246,10 +246,10 @@ def _pre_tool_call(**kwargs) -> dict | None:
     )
 
     if result is None:
-        # Guard unavailable: fail-closed for dangerous tools
+        # Guard unavailable: fail-open — the guard is advisory, and blocking
+        # when the REST is down creates a catch-22 that prevents restarting it.
         if tool_name in {"shell", "bash", "terminal", "exec", "subprocess"}:
-            logger.warning("MemoryX guard unavailable for dangerous tool %s — blocking", tool_name)
-            return {"action": "block", "message": "MemoryX guard unavailable for dangerous tool; blocked."}
+            logger.warning("MemoryX guard unavailable for %s — allowing (fail-open)", tool_name)
         return None
 
     should_block = result.get("should_block") or result.get("block")

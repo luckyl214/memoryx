@@ -121,6 +121,9 @@ class HybridRetrievalEngine:
                     episodic_score=episodic_score,
                     final_score=final_score,
                     explanation=explanation,
+                    source_type=str(memory.get("source_type", "unknown")),
+                    verification_status=str(memory.get("verification_status", "unverified")),
+                    trust_score=float(memory.get("trust_score", 0.5)),
                 )
             )
 
@@ -328,4 +331,7 @@ class HybridRetrievalEngine:
             explanation=f"lesson_boost={boost:.2f},"
             f"match={lesson.get('lesson_match_score',0):.2f},"
             f"policy={lesson.get('policy_type','')}",
+            source_type=str(lesson.get("source_type", "user_explicit")),
+            verification_status=str(lesson.get("verification_status", "verified")),
+            trust_score=float(lesson.get("trust_score", 0.9)),
         )

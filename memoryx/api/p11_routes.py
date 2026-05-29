@@ -484,7 +484,16 @@ def create_p11_router(
         # ── P15.1: Filter through MemoryTrustScorer ──
         filtered = []
         for item in results:
-            data = item if isinstance(item, dict) else getattr(item, "__dict__", {"content": str(item)})
+            if isinstance(item, dict):
+                data = item
+            elif hasattr(item, "__dataclass_fields__"):
+                # Slotted dataclass — extract fields explicitly
+                import dataclasses
+                data = {f.name: getattr(item, f.name) for f in dataclasses.fields(item)}
+            elif hasattr(item, "__dict__"):
+                data = dict(item.__dict__)
+            else:
+                data = {"content": str(item)}
             decision = _trust_scorer.score(data)
             if decision.should_inject:
                 data["trust_score"] = decision.trust_score
