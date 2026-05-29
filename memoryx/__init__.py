@@ -1,4 +1,4 @@
-__version__ = "1.1.0-rc1"
+__version__ = "2.0.0"
 
 from .api import MemoryQueryAPI
 from .bank import MemoryBank

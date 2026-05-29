@@ -27,10 +27,12 @@ cp .env.example .env
 ## Verify
 
 ```bash
-python tools/memoryx_production_selfcheck.py --root .
+# Run the full test suite
+pip install -e ".[dev]"
+pytest -q
 ```
 
-Expected: `FATAL=0, ERROR=0`
+Expected: `328 passed / 1 skipped / 0 failed`
 
 ## Start REST Server
 

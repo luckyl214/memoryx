@@ -13,7 +13,7 @@ def test_check_update_returns_structure():
     assert "latest_version" in result
     assert "up_to_date" in result
     assert "release_url" in result
-    assert result["current_version"] == "1.1.0-rc1"
+    assert result["current_version"] == "2.0.0"
     # 允许网络失败——仓库刚创建，可能没有正式 release
     # 但函数本身不应该抛异常
     assert "error" in result

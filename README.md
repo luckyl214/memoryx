@@ -94,15 +94,18 @@ Wing (记忆类型) → Room (主题) → Drawer (具体记忆)
 
 ```bash
 # 克隆仓库
-git clone https://github.com/lucky99/memoryx.git
+git clone https://github.com/luckyl214/memoryx.git
 cd memoryx
+
+# 切换到 stable 版本
+git checkout v2.0.0
 
 # 创建虚拟环境
 python3 -m venv .venv
 source .venv/bin/activate
 
 # 安装依赖
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ### 2. 配置

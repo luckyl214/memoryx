@@ -1,4 +1,7 @@
-# MemoryX v1.1.0-rc1
+# MemoryX v2.0.0
+
+**Stable release promoted from v2.0.0-rc.2.**
+**Previous release candidates:** [v2.0.0-rc.2](https://github.com/luckyl214/memoryx/releases/tag/v2.0.0-rc.2) · [v2.0.0-rc.1](https://github.com/luckyl214/memoryx/releases/tag/v2.0.0-rc.1)
 
 **Status**: FATAL=0, ERROR=0, WARN=3, E2E=6/6, Core=9/9
 
@@ -28,7 +31,7 @@
 ## Installation
 
 ```bash
-pip install memoryx==1.1.0rc1
+pip install memoryx==2.0.0
 # Or from source:
 git clone https://github.com/YOUR_GITHUB_USERNAME/memoryx
 cd memoryx && pip install -e ".[dev]"
