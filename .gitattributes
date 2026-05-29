@@ -14,3 +14,5 @@ verify_p*.py export-ignore
 tools/ export-ignore
 scripts/ export-ignore
 deploy/ export-ignore
+tests/e2e/test_benchmark_gate.py export-ignore
+tests/production/test_memoryx_production_contracts.py export-ignore
