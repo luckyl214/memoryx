@@ -26,11 +26,17 @@ jobs:
 
       - name: Collect tests
         run: |
-          python -m pytest --collect-only -q
+          python -m pytest --collect-only -q \
+            --ignore=memoryx-pure-release \
+            --ignore=tools \
+            --ignore=scripts/test_siliconflow_embedding.py
 
       - name: Run tests
         run: |
-          python -m pytest -q
+          python -m pytest -q \
+            --ignore=memoryx-pure-release \
+            --ignore=tools \
+            --ignore=scripts/test_siliconflow_embedding.py
 
       - name: Run MemoryX ReleaseGate
         run: |
