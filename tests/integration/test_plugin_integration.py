@@ -49,9 +49,10 @@ async def test_register_binds_required_hooks_and_shutdown() -> None:
         seen.append(event.event_type)
 
     await ctx.memoryx_manager.register_handler(MemoryEventType.ON_USER_MESSAGE, handler)
+    await ctx.memoryx_manager.start()
     await asyncio.sleep(0.05)
     await ctx.hooks["on_user_message"](session_id="s1", content="hello")
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.1)
     await ctx.hooks["on_session_finalize"]()
 
     assert seen == [MemoryEventType.ON_USER_MESSAGE]

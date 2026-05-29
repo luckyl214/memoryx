@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 from uuid import uuid4
 
@@ -39,8 +40,9 @@ class ConsolidationEngine:
             access_count = int(memory.get("access_count", 0))
             if decay >= 0.9 and access_count == 0 and memory.get("active_state", "active") == "active":
                 await self.repository.db.execute(
-                    "INSERT INTO archived_memories(id, memory_id, archived_reason, archived_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP);",
-                    (f"archive-{memory['memory_id']}", memory["memory_id"], memory["content"]),
+                    "INSERT INTO archived_memories(id, memory_id, archived_reason, checksum, archived_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);",
+                    (f"archive-{memory['memory_id']}", memory["memory_id"], memory["content"],
+                     hashlib.sha256(f"{memory['memory_id']}:{memory['content']}:archive".encode()).hexdigest()),
                 )
                 await self.repository.rollback_memory(memory["memory_id"])
                 archived += 1
@@ -60,8 +62,9 @@ class ConsolidationEngine:
                     (new_score, memory["memory_id"]),
                 )
                 await self.repository.db.execute(
-                    "INSERT INTO reinforcement_events(id, memory_id, event_type, reinforcement_score, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);",
-                    (uuid4().hex, memory["memory_id"], "consolidation_reinforcement", 0.15),
+                    "INSERT INTO reinforcement_events(id, memory_id, event_type, reinforcement_score, checksum, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP);",
+                    (uuid4().hex, memory["memory_id"], "consolidation_reinforcement", 0.15,
+                     hashlib.sha256(f"{memory['memory_id']}:consolidation_reinforcement:0.15".encode()).hexdigest()),
                 )
                 reinforced += 1
         return reinforced

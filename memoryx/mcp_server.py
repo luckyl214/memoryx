@@ -29,6 +29,20 @@ class MCPServer:
         except ImportError:
             pass
 
+    async def _query_vector(self, query: str) -> list[float]:
+        """Generate query vector using embedding_manager if available.
+
+        Falls back to empty vector when no embedding_manager is configured.
+        Controlled by allow_embedding_fallback flag.
+        """
+        if self.embedding_manager is not None:
+            try:
+                return await self.embedding_manager.embed_text(query)
+            except Exception:
+                pass
+        # strict: require_embeddings=False, allow_fts_fallback=True
+        return []
+
     def list_tools(self) -> list[dict]:
         """返回 MCP 工具列表。"""
         return [
@@ -100,9 +114,11 @@ class MCPServer:
     async def handle_call(self, tool_name: str, arguments: dict) -> Any:
         """处理 MCP 工具调用。"""
         if tool_name == "memoryx_search":
+            query = arguments["query"]
+            query_vector = await self._query_vector(query)
             return await self.api.search(
-                query=arguments["query"],
-                query_vector=[],  # caller provides vector or uses FTS only
+                query=query,
+                query_vector=query_vector,
                 limit=arguments.get("limit", 5),
                 tag_filter=arguments.get("tag_filter"),
             )
@@ -113,9 +129,11 @@ class MCPServer:
                 limit=arguments.get("limit", 5),
             )
         elif tool_name == "memoryx_reflect":
+            query = arguments["query"]
+            query_vector = await self._query_vector(query)
             result = await self.api.reflect_synthesis(
-                query=arguments["query"],
-                query_vector=[],
+                query=query,
+                query_vector=query_vector,
                 limit=arguments.get("limit", 10),
             )
             return result

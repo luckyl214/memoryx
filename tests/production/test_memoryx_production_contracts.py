@@ -15,10 +15,12 @@ from pathlib import Path
 
 
 def _load_selfcheck_module(root: Path):
+    import sys
     script = root / "tools" / "memoryx_production_selfcheck.py"
     spec = importlib.util.spec_from_file_location("memoryx_production_selfcheck", script)
     assert spec and spec.loader, f"Cannot load {script}"
     mod = importlib.util.module_from_spec(spec)
+    sys.modules["memoryx_production_selfcheck"] = mod
     spec.loader.exec_module(mod)
     return mod
 

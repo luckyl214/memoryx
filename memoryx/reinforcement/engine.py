@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -64,8 +65,9 @@ class ImportanceReinforcementEngine:
                     (new_score, memory_id),
                 )
                 await self.repository.db.execute(
-                    "INSERT INTO reinforcement_events(id, memory_id, event_type, reinforcement_score, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);",
-                    (uuid4().hex, memory_id, "+".join(reasons) or "reinforcement", delta),
+                    "INSERT INTO reinforcement_events(id, memory_id, event_type, reinforcement_score, checksum, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP);",
+                    (uuid4().hex, memory_id, "+".join(reasons) or "reinforcement", delta,
+                     hashlib.sha256(f"{memory_id}:{'+'.join(reasons)}:{delta}".encode()).hexdigest()),
                 )
                 updated += 1
 

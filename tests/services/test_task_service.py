@@ -13,9 +13,15 @@ async def test_task_start_and_end(tmp_path: Path):
     try:
         service = TaskService(repository=repo)
 
+        # Create parent rows for FK constraint (sessions + entities)
+        await repo.db.execute(
+            "INSERT OR IGNORE INTO sessions(session_id, title, start_time) VALUES (?, ?, datetime('now'));",
+            ("s1", "test session"))
+        entity_id = await repo.add_entity("memoryx", "agent")
+
         start = await service.start_task(
             session_id="s1",
-            entity_id="memoryx",
+            entity_id=entity_id,
             task_type="coding",
             title="Refactor auto store",
         )
@@ -24,7 +30,7 @@ async def test_task_start_and_end(tmp_path: Path):
 
         end = await service.end_task(
             session_id="s1",
-            entity_id="memoryx",
+            entity_id=entity_id,
             status="done",
             summary="completed",
         )

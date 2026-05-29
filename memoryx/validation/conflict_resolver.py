@@ -131,7 +131,7 @@ class ConflictResolver:
             elif keyword_conflict:
                 return ConflictMatch(
                     conflicting_memory=memory,
-                    reason="关键词矛盾检测（正反情感标记互斥）",
+                    reason="contradiction detected: polarity markers conflict (positive vs negative)",
                     similarity_score=similarity,
                 )
 

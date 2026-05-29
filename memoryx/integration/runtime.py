@@ -47,6 +47,7 @@ class HermesIntegrationRuntime:
         ctx.memoryx_bridge = self.bridge
 
         register(ctx)
+        ctx.memoryx_listener = getattr(ctx.memoryx_manager, "listener", None)
         self._ctx = ctx
         self.is_running = True
 

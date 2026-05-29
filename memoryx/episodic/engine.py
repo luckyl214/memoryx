@@ -20,14 +20,14 @@ class EpisodicMemoryEngine:
 
     async def session_timeline(self, session_id: str) -> list[dict]:
         rows = await self.repository.db.fetchall(
-            "SELECT episodic_id, session_id, title, content, importance_score, created_at, updated_at FROM episodic_memories WHERE session_id = ? ORDER BY created_at ASC;",
+            "SELECT id AS episodic_id, session_id, summary AS title, content, importance_score, created_at, created_at AS updated_at FROM episodic_memories WHERE session_id = ? ORDER BY created_at ASC;",
             (session_id,),
         )
         return [dict(item) for item in rows]
 
     async def top_episodes(self, limit: int = 10) -> list[dict]:
         rows = await self.repository.db.fetchall(
-            "SELECT episodic_id, session_id, title, content, importance_score, created_at, updated_at FROM episodic_memories ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
+            "SELECT id AS episodic_id, session_id, summary AS title, content, importance_score, created_at, created_at AS updated_at FROM episodic_memories ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
             (limit,),
         )
         return [dict(item) for item in rows]
@@ -35,7 +35,7 @@ class EpisodicMemoryEngine:
     async def search(self, query: str, limit: int = 10) -> list[dict]:
         token = f"%{query.lower()}%"
         rows = await self.repository.db.fetchall(
-            "SELECT episodic_id, session_id, title, content, importance_score, created_at, updated_at FROM episodic_memories WHERE lower(title) LIKE ? OR lower(content) LIKE ? ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
+            "SELECT id AS episodic_id, session_id, summary AS title, content, importance_score, created_at, created_at AS updated_at FROM episodic_memories WHERE lower(summary) LIKE ? OR lower(content) LIKE ? ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
             (token, token, limit),
         )
         return [dict(item) for item in rows]

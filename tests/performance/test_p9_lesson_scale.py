@@ -18,8 +18,8 @@ async def test_lesson_match_p95_under_threshold(tmp_path: Path):
     # Seed 500 lessons with trigger patterns
     for i in range(500):
         await repo.db.execute(
-            "INSERT OR IGNORE INTO memories(id,memory_type,content,importance_score,confidence_score,active_state,checksum,created_at,updated_at) VALUES (?,?,?,?,?,?,?,datetime('now'),datetime('now'))",
-            (f"lmem-{i}", "LESSON", f"Lesson {i}: check before deploy", 0.9, 0.9, "active", f"chk_lmem{i}"),
+            "INSERT OR IGNORE INTO memories(id,memory_type,content,content_hash,importance_score,confidence_score,active_state,checksum,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))",
+            (f"lmem-{i}", "LESSON", f"Lesson {i}: check before deploy", f"ch_lmem{i}", 0.9, 0.9, "active", f"chk_lmem{i}"),
         )
         await repo.db.execute(
             "INSERT OR IGNORE INTO lesson_memories(id,memory_id,lesson_text,policy_type,severity,trigger_patterns_json,evidence_count,confidence_score,active_state,metadata_json) VALUES (?,?,?,?,?,?,?,?,'active','{}')",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any, Awaitable, Callable, Optional
 
@@ -15,9 +16,9 @@ from .subscriber_manager import SubscriberManager
 
 
 class MemoryHookManager:
-    def __init__(self, settings, logger, retries: int | None = None) -> None:
+    def __init__(self, settings, logger=None, retries: int | None = None) -> None:
         self.settings = settings
-        self.logger = logger
+        self.logger = logger or logging.getLogger("memoryx.hooks")
         self.subscribers = SubscriberManager()
         self.dispatcher = EventDispatcher()
         self.queue_mgr = QueueManager(

@@ -163,13 +163,14 @@ class MemoryRepository:
         Atomic write set: memories + memory_versions + audit_logs.
         """
         n = self._normalize_record(record)
+        now = self._now_iso()
 
         async with self.db.transaction(mode="IMMEDIATE") as conn:
             conn.execute(
                 """INSERT INTO memories (id,session_id,memory_type,content,content_summary,content_hash,checksum,
                 importance_score,confidence_score,decay_score,recency_score,access_count,reinforcement_score,safety_score,
-                active_state,superseded_by,contradiction_group_id,valid_from,valid_to,archived_at,created_at,updated_at,metadata_json)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),?)
+                active_state,superseded_by,contradiction_group_id,valid_from,valid_to,archived_at,scope,tags_json,entities_json,created_at,updated_at,metadata_json)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET content=excluded.content,content_hash=excluded.content_hash,
                 checksum=excluded.checksum,importance_score=excluded.importance_score,confidence_score=excluded.confidence_score,
                 decay_score=excluded.decay_score,recency_score=excluded.recency_score,access_count=excluded.access_count,
@@ -178,11 +179,12 @@ class MemoryRepository:
                 contradiction_group_id=excluded.contradiction_group_id,valid_from=excluded.valid_from,
                 valid_to=excluded.valid_to,archived_at=excluded.archived_at,updated_at=datetime('now'),
                 metadata_json=excluded.metadata_json,content_summary=excluded.content_summary,
-                session_id=excluded.session_id,memory_type=excluded.memory_type;""",
+                session_id=excluded.session_id,memory_type=excluded.memory_type,
+                scope=excluded.scope,tags_json=excluded.tags_json,entities_json=excluded.entities_json;""",
                 (n.id,n.session_id,n.memory_type,n.content,n.content_summary,n.content_hash,n.checksum,
                  n.importance_score,n.confidence_score,n.decay_score,n.recency_score,n.access_count,
                  n.reinforcement_score,n.safety_score,n.active_state,n.superseded_by,n.contradiction_group_id,
-                 n.valid_from,n.valid_to,n.archived_at,n.metadata_json))
+                 n.valid_from,n.valid_to,n.archived_at,n.scope,n.tags_json,n.entities_json,now,now,n.metadata_json))
 
             # Write memory_version
             cur = conn.execute("SELECT COALESCE(MAX(version),0)+1 FROM memory_versions WHERE memory_id=?;",(n.id,))
@@ -210,8 +212,8 @@ class MemoryRepository:
                 n = self._normalize_record(r)
                 conn.execute("""INSERT INTO memories (id,session_id,memory_type,content,content_summary,content_hash,checksum,
                 importance_score,confidence_score,decay_score,recency_score,access_count,reinforcement_score,safety_score,
-                active_state,superseded_by,contradiction_group_id,valid_from,valid_to,archived_at,created_at,updated_at,metadata_json)
-                VALUES (:id,:sid,:mt,:c,:cs,:ch,:ck,:is,:cf,:ds,:rs,:ac,:rf,:sf,:as,:sb,:cg,:vf,:vt,:aa,:now,:now,:mj)
+                active_state,superseded_by,contradiction_group_id,valid_from,valid_to,archived_at,scope,tags_json,entities_json,created_at,updated_at,metadata_json)
+                VALUES (:id,:sid,:mt,:c,:cs,:ch,:ck,:is,:cf,:ds,:rs,:ac,:rf,:sf,:as,:sb,:cg,:vf,:vt,:aa,:sc,:tj,:ej,:now,:now,:mj)
                 ON CONFLICT(id) DO UPDATE SET content=excluded.content,content_hash=excluded.content_hash,
                 checksum=excluded.checksum,importance_score=excluded.importance_score,confidence_score=excluded.confidence_score,
                 decay_score=excluded.decay_score,recency_score=excluded.recency_score,access_count=excluded.access_count,
@@ -220,12 +222,13 @@ class MemoryRepository:
                 contradiction_group_id=excluded.contradiction_group_id,valid_from=excluded.valid_from,
                 valid_to=excluded.valid_to,archived_at=excluded.archived_at,updated_at=:now,
                 metadata_json=excluded.metadata_json,content_summary=excluded.content_summary,
-                session_id=excluded.session_id,memory_type=excluded.memory_type;""",
+                session_id=excluded.session_id,memory_type=excluded.memory_type,
+                scope=excluded.scope,tags_json=excluded.tags_json,entities_json=excluded.entities_json;""",
                 {"id":n.id,"sid":n.session_id,"mt":n.memory_type,"c":n.content,"cs":n.content_summary,
                  "ch":n.content_hash,"ck":n.checksum,"is":n.importance_score,"cf":n.confidence_score,
                  "ds":n.decay_score,"rs":n.recency_score,"ac":n.access_count,"rf":n.reinforcement_score,
                  "sf":n.safety_score,"as":n.active_state,"sb":n.superseded_by,"cg":n.contradiction_group_id,
-                 "vf":n.valid_from,"vt":n.valid_to,"aa":n.archived_at,"mj":n.metadata_json,"now":now})
+                 "vf":n.valid_from,"vt":n.valid_to,"aa":n.archived_at,"sc":n.scope,"tj":n.tags_json,"ej":n.entities_json,"mj":n.metadata_json,"now":now})
                 ver = int(conn.execute("SELECT COALESCE(MAX(version),0) FROM memory_versions WHERE memory_id=?;",(n.id,)).fetchone()[0])+1
                 conn.execute("INSERT INTO memory_versions(id,memory_id,version,content,content_hash,checksum,valid_from,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?,?);",
                     (uuid4().hex,n.id,ver,n.content,n.content_hash,n.checksum,now,now,"{}"))
@@ -319,10 +322,19 @@ class MemoryRepository:
         summary: str | None = None,
         importance_score: float = 0.5,
     ) -> str:
-        # backward-compatible alias: title → content
-        if title is not None and not content:
-            content = title
+        # backward-compatible alias: title → content, title → summary
+        if title is not None:
+            if not content:
+                content = title
+            if summary is None:
+                summary = title
         eid = uuid4().hex; now = self._now_iso(); ch = self.checksum(content)
+        if not memory_id:
+            memory_id = f"ep-{eid}"
+            # Ensure parent row exists for FK constraint
+            await self.db.execute(
+                "INSERT OR IGNORE INTO memories(id,memory_type,content,content_hash,checksum,active_state) VALUES (?,?,?,?,?,?);",
+                (memory_id, "EPISODE", content, ch, ch, "active"))
         await self.db.execute("INSERT INTO episodic_memories(id,memory_id,session_id,content,summary,importance_score,valid_from,active_state,checksum,created_at,metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?,?);",
             (eid,memory_id,session_id,content,summary,importance_score,now,"active",ch,now,"{}"))
         return eid
@@ -331,6 +343,7 @@ class MemoryRepository:
         now = self._now_iso()
         await self.db.execute("INSERT INTO safety_quarantine(id,memory_id,reason,active_state,checksum,created_at,metadata_json) VALUES (?,?,?,?,?,?,?);",
             (uuid4().hex,memory_id,reason,"quarantined",self.checksum(f"quarantine:{memory_id}:{reason}"),now,"{}"))
+        await self.db.execute("UPDATE memories SET active_state='quarantined', updated_at=? WHERE id=?;", (now, memory_id))
 
     async def append_audit(self, entity_type: str, entity_id: str, action: str, before_json: dict|None=None, after_json: dict|None=None, actor: str|None=None) -> None:
         now = self._now_iso()

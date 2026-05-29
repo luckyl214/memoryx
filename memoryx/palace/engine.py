@@ -138,10 +138,13 @@ class PalaceEngine:
 
     async def add_tunnel(self, source_wing_id: str, target_wing_id: str, weight: float = 1.0) -> None:
         """在两个翼之间创建隧道。"""
+        # Ensure default rooms exist for FK constraint
+        source_room = await self.ensure_room(source_wing_id, "_default")
+        target_room = await self.ensure_room(target_wing_id, "_default")
         await self.repository.db.execute(
             "INSERT OR REPLACE INTO palace_tunnels(id, source_room_id, target_room_id, weight, created_at) "
             "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);",
-            (uuid4().hex, source_wing_id, target_wing_id, weight),
+            (uuid4().hex, source_room.room_id, target_room.room_id, weight),
         )
 
     async def traverse(self, wing_name: str, depth: int = 2) -> list[dict]:
@@ -154,26 +157,36 @@ class PalaceEngine:
             "SELECT id AS wing_id, name, description FROM palace_wings WHERE name = ?;", (wing_name,))
         if not start:
             return results
-        queue.append((str(start["wing_id"]), 0))
+        start_wing_id = str(start["wing_id"])
+        queue.append((start_wing_id, 0))
 
         while queue:
-            current_id, level = queue.popleft()
-            if current_id in visited or level > depth:
+            current_wing_id, level = queue.popleft()
+            if current_wing_id in visited or level > depth:
                 continue
-            visited.add(current_id)
+            visited.add(current_wing_id)
             wing = await self.repository.db.fetchone(
-                "SELECT id AS wing_id, name, description FROM palace_wings WHERE id = ?;", (current_id,))
+                "SELECT id AS wing_id, name, description FROM palace_wings WHERE id = ?;", (current_wing_id,))
             if wing:
                 results.append({"wing_id": str(wing["wing_id"]), "name": str(wing["name"]),
                                 "description": str(wing["description"]) if wing["description"] else "", "depth": level})
-            for direction in ["source_wing_id", "target_wing_id"]:
-                other = "target_wing_id" if direction == "source_wing_id" else "source_wing_id"
-                edges = await self.repository.db.fetchall(
-                    f"SELECT {other} AS neighbor_id FROM palace_tunnels WHERE {direction} = ? ORDER BY weight DESC;",
-                    (current_id,),
-                )
-                for edge in edges:
-                    queue.append((str(edge["neighbor_id"]), level + 1))
+            # Find rooms for this wing, then tunnels through those rooms
+            room_ids = [str(r["room_id"]) for r in await self.repository.db.fetchall(
+                "SELECT id AS room_id FROM palace_rooms WHERE wing_id = ?;", (current_wing_id,))]
+            for room_id in room_ids:
+                for direction in ["source_room_id", "target_room_id"]:
+                    other = "target_room_id" if direction == "source_room_id" else "source_room_id"
+                    edges = await self.repository.db.fetchall(
+                        f"SELECT {other} AS neighbor_room_id FROM palace_tunnels WHERE {direction} = ? ORDER BY weight DESC;",
+                        (room_id,),
+                    )
+                    for edge in edges:
+                        neighbor_room_id = str(edge["neighbor_room_id"])
+                        # Look up which wing this room belongs to
+                        neighbor_wing = await self.repository.db.fetchone(
+                            "SELECT wing_id FROM palace_rooms WHERE id = ?;", (neighbor_room_id,))
+                        if neighbor_wing:
+                            queue.append((str(neighbor_wing["wing_id"]), level + 1))
         return results
 
     # ---- 搜索 ----
@@ -190,7 +203,7 @@ class PalaceEngine:
             "SELECT d.id AS drawer_id, d.room_id, d.memory_id, d.content, d.source, d.line_start, d.line_end, d.created_at "
             "FROM palace_drawers d "
             "JOIN palace_rooms r ON r.id = d.room_id "
-            "WHERE r.id = ? AND lower(d.content) LIKE ? "
+            "WHERE r.wing_id = ? AND lower(d.content) LIKE ? "
             "ORDER BY d.created_at DESC LIMIT 20;",
             (wing_id, f"%{query_lower}%"),
         )

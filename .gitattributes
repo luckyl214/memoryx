@@ -1,0 +1,9 @@
+# Exclude from git archive / source distribution
+reports/ export-ignore
+artifacts/ export-ignore
+traces/ export-ignore
+lancedb/ export-ignore
+study/ export-ignore
+memoryx-pure-release/ export-ignore
+scripts/test_siliconflow_embedding.py export-ignore
+tools/test_siliconflow_embedding.py export-ignore

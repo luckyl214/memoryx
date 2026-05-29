@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -36,9 +37,10 @@ class KnowledgeDistillationEngine:
         artifact.summary = self._summary(artifact)
 
         if persist:
+            content_hash = hashlib.sha256(artifact.summary.encode()).hexdigest()
             await self.repository.db.execute(
-                "INSERT INTO reflection_summaries(id, summary, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);",
-                (uuid4().hex, artifact.summary),
+                "INSERT INTO reflection_summaries(id, summary, content_hash, checksum, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);",
+                (uuid4().hex, artifact.summary, content_hash, content_hash),
             )
         return artifact
 

@@ -39,7 +39,7 @@ async def test_self_healing_removes_orphan_relations(tmp_path: Path) -> None:
 
     engine = SelfHealingEngine(repository=repo)
     report = await engine.run_once(repair=True)
-    orphan = await repo.db.fetchone("SELECT relation_id FROM relations WHERE relation_id = ?;", (relation_id,))
+    orphan = await repo.db.fetchone("SELECT id FROM relations WHERE id = ?;", (relation_id,))
 
     assert "orphan_relations" in report.detected_issues
     assert report.repaired_counts["orphan_relations"] == 1
@@ -59,7 +59,7 @@ async def test_self_healing_marks_stale_embeddings_for_refresh(tmp_path: Path) -
 
     engine = SelfHealingEngine(repository=repo, stale_embedding_days=30)
     report = await engine.run_once(repair=True)
-    rows = await repo.db.fetchall("SELECT action, payload_json FROM audit_logs WHERE action = ?;", ("embedding_refresh_needed",))
+    rows = await repo.db.fetchall("SELECT action, before_json AS payload_json FROM audit_logs WHERE entity_type = ?;", ("embedding_refresh_needed",))
 
     assert "stale_embeddings" in report.detected_issues
     assert report.repaired_counts["stale_embeddings"] == 1

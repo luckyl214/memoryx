@@ -61,7 +61,8 @@ class SelfHealingEngine:
             await self.repository.append_audit(
                 "repair_checksum_drift",
                 memory_id,
-                {"old_checksum": row["checksum"], "new_checksum": expected},
+                "checksum_repaired",
+                before_json={"old_checksum": row["checksum"], "new_checksum": expected},
             )
         return len(drifted)
 
@@ -84,7 +85,8 @@ class SelfHealingEngine:
             await self.repository.append_audit(
                 "repair_orphan_relation",
                 relation_id,
-                {"relation_id": relation_id},
+                "orphan_removed",
+                before_json={"relation_id": relation_id},
             )
         return len(relation_ids)
 
@@ -103,10 +105,10 @@ class SelfHealingEngine:
             await self.repository.append_audit(
                 "embedding_refresh_needed",
                 memory_id,
-                {
+                "stale_embedding_detected",
+                before_json={
                     "memory_id": memory_id,
                     "dimension": row.get("dimension"),
-                    "created_at": row.get("created_at"),
                     "created_at": row.get("created_at"),
                 },
             )

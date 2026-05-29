@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
@@ -76,10 +77,11 @@ class PersonaEngine:
         }
 
         if persist:
+            content_hash = hashlib.sha256(markdown.encode()).hexdigest()
             await self.repository.db.execute(
-                "INSERT INTO reflection_summaries(id, summary, created_at, updated_at) "
-                "VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);",
-                (__import__("uuid").uuid4().hex, markdown),
+                "INSERT INTO reflection_summaries(id, summary, content_hash, checksum, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);",
+                (__import__("uuid").uuid4().hex, markdown, content_hash, content_hash),
             )
 
         return result

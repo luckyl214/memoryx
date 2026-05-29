@@ -62,7 +62,7 @@ class LessonPolicyEngine:
                 item["lesson_match_reasons"] = reasons
                 scored.append(item)
                 lesson_match_total.labels(policy_type=str(item.get("policy_type") or "unknown")).inc()
-                lesson_boost_score.observe(score)
+                lesson_boost_score.labels(policy_type=str(item.get("policy_type") or "unknown")).observe(score)
 
         scored.sort(
             key=lambda x: (

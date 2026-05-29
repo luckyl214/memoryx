@@ -46,7 +46,7 @@ async def test_storage_conflicts_and_quarantine(tmp_path: Path) -> None:
 
     superseded = await repo.get_memory("source")
     assert superseded is not None
-    assert superseded["active_state"] == 0
+    assert superseded["active_state"] == "superseded"
     assert superseded["superseded_by"] == "conflict"
 
     await repo.close()

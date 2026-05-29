@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS memories (
     valid_from TEXT NOT NULL DEFAULT (datetime('now')),
     valid_to TEXT,
     archived_at TEXT,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    entities_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     metadata_json TEXT NOT NULL DEFAULT '{}',

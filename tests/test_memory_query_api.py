@@ -18,7 +18,7 @@ class DummyVectorStore:
 async def test_query_api_search_and_recall(tmp_path: Path) -> None:
     repo = MemoryRepository(tmp_path / "api-search.db")
     await repo.open()
-    await repo.store_memory(MemoryRecord(id="m1", memory_type="PREFERENCE", content="User prefers async Python", importance_score=0.9))
+    await repo.store_memory(MemoryRecord(id="m1", memory_type="PREFERENCE", content="User prefers async Python", importance_score=0.9, scope="user"))
 
     api = MemoryQueryAPI(repository=repo, vector_store=DummyVectorStore())
     search_result = await api.search(query="async Python", query_vector=[0.1, 0.2], limit=5)

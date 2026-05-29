@@ -72,3 +72,18 @@ output/
 *.key
 *.crt
 data/API_CONFIG_REPORT.md
+
+# Reports / artifacts (generated, not source)
+reports/
+artifacts/
+traces/
+lancedb/
+study/
+
+# Memory archives
+*.tar
+*.tar.gz
+*.zip
+
+# MemoryX runtime
+memoryx-pure-release/

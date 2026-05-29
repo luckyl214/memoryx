@@ -50,7 +50,7 @@ async def test_consolidation_archives_cold_memories(tmp_path: Path) -> None:
     assert archived >= 1
     record = await repo.get_memory("cold-1")
     assert record is not None
-    assert str(record["active_state"]) == "quarantined"
+    assert str(record["active_state"]) == "archived"
     await repo.close()
 
 
@@ -83,5 +83,5 @@ async def test_consolidation_merges_duplicate_memories(tmp_path: Path) -> None:
     assert merged >= 1
     older = await repo.get_memory("dup-2")
     assert older is not None
-    assert str(older["active_state"]) == "quarantined"
+    assert str(older["active_state"]) == "superseded"
     await repo.close()

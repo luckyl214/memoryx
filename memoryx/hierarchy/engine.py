@@ -60,12 +60,12 @@ class HierarchicalMemoryManager:
         if tier == MemoryTier.SHORT_TERM_EPISODIC:
             if session_id:
                 rows = await self.repository.db.fetchall(
-                    "SELECT episodic_id, session_id, title, content, importance_score, created_at FROM episodic_memories WHERE session_id = ? ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
+                    "SELECT id AS episodic_id, session_id, summary AS title, content, importance_score, created_at FROM episodic_memories WHERE session_id = ? ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
                     (session_id, limit),
                 )
             else:
                 rows = await self.repository.db.fetchall(
-                    "SELECT episodic_id, session_id, title, content, importance_score, created_at FROM episodic_memories ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
+                    "SELECT id AS episodic_id, session_id, summary AS title, content, importance_score, created_at FROM episodic_memories ORDER BY importance_score DESC, created_at DESC LIMIT ?;",
                     (limit,),
                 )
             return [dict(row, tier=MemoryTier.SHORT_TERM_EPISODIC) for row in rows]
@@ -110,9 +110,12 @@ class HierarchicalMemoryManager:
         return MemoryTier.CONSOLIDATED_KNOWLEDGE
 
     async def _archive_memory(self, memory: dict) -> None:
+        import hashlib
         memory_id = str(memory["memory_id"])
+        content = str(memory.get("content", ""))
+        checksum = hashlib.sha256(f"{memory_id}:{content}:archive".encode()).hexdigest()
         await self.repository.db.execute(
-            "INSERT OR IGNORE INTO archived_memories(id, memory_id, archived_reason, archived_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP);",
-            (f"archive-{memory_id}-{uuid4().hex}", memory_id, str(memory.get("content", ""))),
+            "INSERT OR IGNORE INTO archived_memories(id, memory_id, content, archived_reason, checksum, archived_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP);",
+            (f"archive-{memory_id}-{uuid4().hex}", memory_id, content, content, checksum),
         )
         await self.repository.rollback_memory(memory_id)

@@ -61,7 +61,14 @@ class ConversationLogStore:
             """,
             (session_id, limit),
         )
-        return [dict(row) for row in rows]
+        return [dict(row, log_id=row["id"]) for row in rows]
+
+    async def count_by_session(self, session_id: str) -> int:
+        row = await self.repository.db.fetchone(
+            "SELECT COUNT(*) AS cnt FROM conversation_logs WHERE session_id = ?;",
+            (session_id,),
+        )
+        return int(row["cnt"]) if row else 0
 
     async def search(
         self,

@@ -31,7 +31,7 @@ async def test_observability_reads_audit_logs_and_lineage(tmp_path: Path) -> Non
     await repo.open()
     await repo.store_memory(MemoryRecord(id="m2", memory_type="PROJECT", content="Initial project state"))
     await repo.store_memory(MemoryRecord(id="m2", memory_type="PROJECT", content="Updated project state"))
-    await repo.append_audit("custom_action", "m2", {"detail": "ok"})
+    await repo.append_audit("custom_action", "m2", "test_event", before_json={"detail": "ok"})
 
     engine = MemoryObservabilityEngine(repository=repo)
     audits = await engine.audit_logs(subject_id="m2")
